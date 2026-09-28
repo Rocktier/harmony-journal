@@ -18,6 +18,12 @@ import { Block, BLOCK_TYPE_H, BLOCK_TYPE_IMG, BLOCK_TYPE_LI, BLOCK_TYPE_P, Span 
 export const H_PREFIX: string = '# ';
 export const LI_PREFIX: string = '- ';
 
+/** Markdown 快捷键的转换结果（ArkTS 不允许内联对象类型） */
+export interface MarkdownHit {
+  prefix: string;
+  rest: string;
+}
+
 /** 行文本 → 块类型（只认行首前缀，避免正文里写个 '-' 就被当列表） */
 export function blockTypeOfLine(line: string): string {
   if (line.startsWith(H_PREFIX)) {
@@ -112,12 +118,14 @@ export function blocksToLines(blocks: Block[]): string[] {
  * 输入 `# ` / `- ` 时的即时转换（Markdown 快捷键）。
  * 返回 null = 不需要转换。
  */
-export function markdownTransform(line: string): { prefix: string; rest: string } | null {
+export function markdownTransform(line: string): MarkdownHit | null {
   if (line === '#') {
-    return { prefix: H_PREFIX, rest: '' };
+    const h: MarkdownHit = { prefix: H_PREFIX, rest: '' };
+    return h;
   }
   if (line === '-') {
-    return { prefix: LI_PREFIX, rest: '' };
+    const li: MarkdownHit = { prefix: LI_PREFIX, rest: '' };
+    return li;
   }
   return null;
 }

@@ -213,16 +213,16 @@ export function jsonToBlocks(json: string): Block[] {
   if (json.length === 0) {
     return [];
   }
-  let root: object = {};
+  // ⚠️ 连空对象字面量 `{}` 都会被 ArkTS 判为未声明类型（10605038），所以不给初值
+  let holder: RootHolder | null = null;
   try {
-    root = JSON.parse(json) as object;
+    holder = JSON.parse(json) as RootHolder;
   } catch (e) {
     return [];
   }
-  if (root === null || typeof root !== 'object') {
+  if (holder === null) {
     return [];
   }
-  const holder: RootHolder = root as RootHolder;
   const list: Block[] = holder.blocks !== undefined && holder.blocks !== null ? holder.blocks : [];
   if (!Array.isArray(list)) {
     return [];

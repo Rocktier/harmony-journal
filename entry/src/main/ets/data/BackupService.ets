@@ -44,16 +44,16 @@ export function parseBackup(plain: Uint8Array): BackupItem[] {
   if (text.length === 0) {
     return [];
   }
-  let root: object = {};
+  // 同样：空对象字面量 `{}` 也不给初值（ArkTS 10605038）
+  let holder: BackupHolder | null = null;
   try {
-    root = JSON.parse(text) as object;
+    holder = JSON.parse(text) as BackupHolder;
   } catch (e) {
     return [];
   }
-  if (root === null || typeof root !== 'object') {
+  if (holder === null) {
     return [];
   }
-  const holder: BackupHolder = root as BackupHolder;
   if (holder.app !== BACKUP_APP || holder.v !== BACKUP_VERSION) {
     return [];
   }
@@ -64,11 +64,13 @@ export function parseBackup(plain: Uint8Array): BackupItem[] {
     if (it === null || it === undefined || !isValidDateKey(it.date)) {
       continue;
     }
-    out.push({
+    const fallback: NoteMeta = { date: it.date, mood: '', moodText: '', updatedAt: 0, words: 0, hasImage: false };
+    const kept: BackupItem = {
       date: it.date,
-      meta: it.meta !== undefined ? it.meta : { date: it.date, mood: '', moodText: '', updatedAt: 0, words: 0, hasImage: false },
+      meta: it.meta !== undefined ? it.meta : fallback,
       blocks: jsonToBlocks(blocksToJson(it.blocks !== undefined ? it.blocks : []))
-    });
+    };
+    out.push(kept);
   }
   return out;
 }

@@ -5,6 +5,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 
 import { Block, blocksToJson, jsonToBlocks, wordCountOf } from './NoteBlocks';
 import { NoteMeta, isValidDateKey } from './NoteMeta';
+import { BackupItem } from './BackupService';
 import { VaultService } from './VaultService';
 
 /**
@@ -91,7 +92,8 @@ export class NoteStore {
   /** 写索引（整体重写：条目数 = 日记篇数，一年也就 365 条，代价可接受） */
   saveIndex(): boolean {
     try {
-      const json: string = JSON.stringify({ v: 1, items: this.index });
+      const holder: IndexHolder = { v: 1, items: this.index };
+      const json: string = JSON.stringify(holder);
       const bytes: Uint8Array = this.utf8(json);
       const enc: Uint8Array | null = this.vault.encrypt(bytes);
       if (enc === null) {
@@ -190,21 +192,29 @@ export class NoteStore {
    * 导出用：把所有日记读成明文 JSON（**只在用户主动导出时调用**，
    * 且导出文件仍会用同一个密码再加密一次 —— 见 BackupService）
    */
-  exportAll(): { date: string; blocks: Block[]; meta: NoteMeta }[] {
-    const out: { date: string; blocks: Block[]; meta: NoteMeta }[] = [];
+  /**
+   * 导出用：把所有日记读成明文结构（**只在用户主动导出时调用**，
+   * 且导出文件仍会用同一个密码再加密一次 —— 见 BackupService）
+   *
+   * 复用 `BackupItem` 而不是另起一个同名接口：ArkTS **不支持结构化类型兼容**，
+   * 两个字段一样的接口互不兼容，另起一个就传不进 `buildBackup()`。
+   */
+  exportAll(): BackupItem[] {
+    const out: BackupItem[] = [];
     const list: NoteMeta[] = this.list();
     for (let i: number = 0; i < list.length; i++) {
       const m: NoteMeta = list[i];
-      out.push({ date: m.date, blocks: this.readNote(m.date), meta: m });
+      const item: BackupItem = { date: m.date, blocks: this.readNote(m.date), meta: m };
+      out.push(item);
     }
     return out;
   }
 
   /** 导入：把导出的内容写回来（覆盖同名日期） */
-  importAll(items: { date: string; blocks: Block[]; meta: NoteMeta }[]): number {
+  importAll(items: BackupItem[]): number {
     let n: number = 0;
     for (let i: number = 0; i < items.length; i++) {
-      const it: { date: string; blocks: Block[]; meta: NoteMeta } = items[i];
+      const it: BackupItem = items[i];
       if (!isValidDateKey(it.date)) {
         continue;
       }
