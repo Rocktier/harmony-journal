@@ -1,2 +1,3 @@
 import './smoke.test.ts';
-// Phase 2 起在这里追加：blocks.test.ts（块模型合并规则）...
+import './blocks.test.ts';
+// 后续 Phase 追加：vault.test.ts（加密）/ search.test.ts（搜索）/ backup.test.ts（导出导入）
