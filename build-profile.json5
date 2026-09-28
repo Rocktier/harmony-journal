@@ -1,18 +1,15 @@
 {
   "app": {
-    // ⚠️ **签名配置待补**（与 RockReader 不同的起点）：
-    //   RockReader 的 default/release 签名是 DevEco 自动签名 + AGC 发布证书。
-    //   Journal 需要先在 AGC 创建应用（包名 com.rocktier.rockjournal）→ 申请调试/发布证书
-    //   → 再在这里补 default（调试）与 release（发布）的 signingConfigs。
-    //   目前只保留 ci / compat15 两个**无需签名**的编译校验产物（照 RockReader 配方）。
+    // 签名说明（2026-09-28）：
+    //   default = DevEco 自动签名（调试证书，C:\Users\Dang\.ohos\config\default_RockJournal_*），
+    //   仅供本机模拟器/真机装机调试 —— ⚠️ 调试证书绑定本机与设备 UDID，路径是本机的，
+    //   **不要提交到 CI**（CI 的 build-hap 用 ci product，无签名，见 workflows）。
+    //   release = 上架产物，AGC 发布证书待申请（提审前再做，照 RockReader 的 keys/rockreader-v2 流程）。
     "products": [
       {
-        // 日常构建产物（HarmonyOS 单框架 6.x）。⚠️ **暂无 signingConfig** ——
-        // Journal 的调试/发布证书还没在 AGC 创建（需先在 AGC 注册应用 + 申请证书），
-        // 证书到位后在这里补 signingConfigs，并新增 release product（照 RockReader）。
-        // 没有签名配置时 debug 构建产出 **unsigned HAP**：编译校验够用，
-        // 但装进模拟器/真机需要签名（RockReader 的经验：装机走 DevEco 自动签名那套）。
+        // 日常构建产物（HarmonyOS 单框架 6.x）：装机调试用
         "name": "default",
+        "signingConfig": "default",
         "compatibleSdkVersion": "5.0.4(16)",
         "targetSdkVersion": "6.0.0(20)",
         "runtimeOS": "HarmonyOS",
@@ -38,7 +35,7 @@
         "compatibleSdkVersion": 15,
         "runtimeOS": "OpenHarmony",
         "buildOption": {}
-      },
+      }
       // ── 正式产物（占位，签名证书到位后放开 signingConfigs 并补进 products）──
       // {
       //   "name": "default",          // 日常调试（HarmonyOS 单框架 6.x）
@@ -63,6 +60,21 @@
       },
       {
         "name": "release"
+      }
+    ],
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "C:\\Users\\Dang\\.ohos\\config\\default_RockJournal_-p2vtLEhKneOX_JOJ5IP7GOUeFbxhtuP9YNypEWGIUM=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001BEDC1214E5D6AE82125E1065F74BA3AD8CCEFC37255A57848A69C8A5EACC0E2CBEAAD03B3D81A8A",
+          "profile": "C:\\Users\\Dang\\.ohos\\config\\default_RockJournal_-p2vtLEhKneOX_JOJ5IP7GOUeFbxhtuP9YNypEWGIUM=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:\\Users\\Dang\\.ohos\\config\\default_RockJournal_-p2vtLEhKneOX_JOJ5IP7GOUeFbxhtuP9YNypEWGIUM=.p12",
+          "storePassword": "0000001BCF15641E5C9ABA1D0DE7AF30BE3631619DE0E395893A2D07BE8EAF4709D433FCABFA9B94091D26"
+        }
       }
     ]
   },
