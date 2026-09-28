@@ -1,51 +1,297 @@
-import { APP_NAME_CN, APP_VERSION } from '../common/AppMeta';
+import { common } from '@kit.AbilityKit';
+import { router } from '@kit.ArkUI';
+import { hilog } from '@kit.PerformanceAnalysisKit';
+
+import { DEV_SHOW_BADGE } from '../common/DevFlags';
+import { NoteMeta, MonthCell, moodById, monthGrid, monthOf, searchNotes, shiftMonth, todayKey } from '../data/NoteMeta';
+import { NoteStore } from '../data/NoteStore';
+import { getStore } from '../data/NoteStoreHolder';
 
 /**
- * 骨架占位页（Phase 1）。
+ * 主页面：月视图日历 + 日记列表 + 搜索
  *
- * 只验证：工程能编译、能启动、家族观感（纯黑底 + 白字 + 右上红点）能立住。
- * Phase 4 编辑器起来后，这里会变成「今天写一篇」的主页面；
- * 解锁页（Phase 3 HUKS 生物）会插在 EntryAbility 与本页之间。
+ * 家族观感：纯黑底、白字、红点做"有日记"的标记（与图标红点同源）。
+ * 一天一篇 —— 点任意一天直接进入那天的编辑页（没有就是新建）。
  */
+const DOMAIN: number = 0x0000;
+const TAG: string = 'RockJournal';
+
 @Entry
 @Component
 struct Index {
+  @State private metas: NoteMeta[] = [];
+  @State private mode: string = 'month';
+  @State private monthKey: string = monthOf(todayKey());
+  @State private query: string = '';
+  @State private hits: { date: string; snippet: string }[] = [];
+  @State private loaded: boolean = false;
+  private store: NoteStore = getStore();
+
+  aboutToAppear(): void {
+    this.reload();
+  }
+
+  private reload(): void {
+    this.metas = this.store.list();
+    this.loaded = true;
+    hilog.info(DOMAIN, TAG, 'index loaded: %{public}d notes', this.metas.length);
+  }
+
+  private cells(): MonthCell[] {
+    return monthGrid(this.monthKey, this.store.allDates());
+  }
+
+  private open(date: string): void {
+    router.pushUrl({ url: 'pages/Editor', params: { date: date } }).catch((e: Error) => {
+      hilog.error(DOMAIN, TAG, 'pushUrl failed: %{public}s', JSON.stringify(e));
+    });
+  }
+
+  private runSearch(): void {
+    const texts: { date: string; text: string }[] = [];
+    for (let i: number = 0; i < this.metas.length; i++) {
+      const m: NoteMeta = this.metas[i];
+      texts.push({ date: m.date, text: this.store.readNote(m.date).map((b) => b.spans.map((s) => s.text).join('')).join('\n') });
+    }
+    this.hits = searchNotes(texts, this.query);
+  }
+
+  private moodEmoji(m: NoteMeta): string {
+    if (m.mood.length === 0) {
+      return '';
+    }
+    if (m.mood === 'custom') {
+      return m.moodText.length > 0 ? m.moodText.substring(0, 2) : '·';
+    }
+    const found = moodById(m.mood);
+    return found === null ? '' : found.emoji;
+  }
+
   build() {
-    Stack() {
-      Column() {
-        Blank()
-
-        // 家族红点：应用内 UI 的识别锚（与图标的红点同色同源）
-        Circle({ width: 10, height: 10 })
-          .fill($r('app.color.rj_red'))
-          .margin({ bottom: 24 })
-
-        Text(APP_NAME_CN)
-          .fontSize(40)
+    Column() {
+      // 顶部：视图切换 + 月份
+      Row() {
+        Text('Rock私记')
+          .fontSize(20)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.rj_text'))
-          .letterSpacing(6)
-
-        Text('纯粹私密 · 永不上传')
-          .fontSize(13)
-          .fontColor($r('app.color.rj_text3'))
-          .margin({ top: 12 })
-          .letterSpacing(3)
-
+          .letterSpacing(2)
+        if (DEV_SHOW_BADGE) {
+          Text('DEV')
+            .fontSize(9)
+            .fontFamily('monospace')
+            .fontColor($r('app.color.rj_red'))
+            .border({ width: 1, color: $r('app.color.rj_red') })
+            .padding({ left: 4, right: 4, top: 1, bottom: 1 })
+            .margin({ left: 8 })
+        }
         Blank()
-
-        Text(`v${APP_VERSION}`)
+        Text(this.mode === 'month' ? '月' : '列表')
           .fontSize(10)
-          .fontColor($r('app.color.rj_text3'))
           .fontFamily('monospace')
-          .margin({ bottom: 32 })
+          .fontColor($r('app.color.rj_text3'))
+          .onClick(() => {
+            this.mode = this.mode === 'month' ? 'list' : 'month';
+          })
       }
       .width('100%')
-      .height('100%')
+      .padding({ left: 20, right: 20, top: 16, bottom: 8 })
+
+      // 搜索
+      TextInput({ placeholder: '搜日记', text: this.query })
+        .fontSize(13)
+        .backgroundColor($r('app.color.rj_card'))
+        .fontColor($r('app.color.rj_text'))
+        .placeholderColor($r('app.color.rj_text3'))
+        .height(38)
+        .margin({ left: 20, right: 20, bottom: 8 })
+        .onChange((v: string) => {
+          this.query = v;
+          if (v.length > 0) {
+            this.runSearch();
+          } else {
+            this.hits = [];
+          }
+        })
+
+      if (this.query.length > 0) {
+        // 搜索结果
+        if (this.hits.length === 0) {
+          Text('没有找到')
+            .fontSize(12)
+            .fontColor($r('app.color.rj_text3'))
+            .margin({ top: 40 })
+        }
+        List() {
+          ForEach(this.hits, (hit: { date: string; snippet: string }) => {
+            ListItem() {
+              Column() {
+                Text(hit.date)
+                  .fontSize(11)
+                  .fontFamily('monospace')
+                  .fontColor($r('app.color.rj_text3'))
+                Text(hit.snippet)
+                  .fontSize(14)
+                  .fontColor($r('app.color.rj_text'))
+                  .margin({ top: 4 })
+                  .maxLines(2)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+              }
+              .alignItems(HorizontalAlign.Start)
+              .padding({ left: 20, right: 20, top: 12, bottom: 12 })
+              .width('100%')
+            }
+            .onClick(() => {
+              this.open(hit.date);
+            })
+          }, (hit: { date: string; snippet: string }) => hit.date)
+        }
+        .layoutWeight(1)
+        .divider({ strokeWidth: 1, color: $r('app.color.rj_line') })
+      } else if (this.mode === 'month') {
+        // 月视图
+        Row() {
+          Text('<')
+            .fontSize(16)
+            .fontColor($r('app.color.rj_text2'))
+            .onClick(() => {
+              this.monthKey = shiftMonth(this.monthKey, -1);
+            })
+            .padding(8)
+          Text(this.monthKey)
+            .fontSize(14)
+            .fontFamily('monospace')
+            .fontColor($r('app.color.rj_text'))
+            .letterSpacing(2)
+          Text('>')
+            .fontSize(16)
+            .fontColor($r('app.color.rj_text2'))
+            .onClick(() => {
+              this.monthKey = shiftMonth(this.monthKey, 1);
+            })
+            .padding(8)
+        }
+        .margin({ bottom: 8 })
+
+        // 6×7 网格
+        Grid() {
+          ForEach(this.cells(), (cell: MonthCell) => {
+            GridItem() {
+              Stack({ alignContent: Alignment.TopEnd }) {
+                Text(cell.day.toString())
+                  .fontSize(13)
+                  .fontFamily('monospace')
+                  .fontColor(cell.inMonth ? $r('app.color.rj_text') : $r('app.color.rj_text3'))
+                if (cell.hasNote) {
+                  Circle({ width: 5, height: 5 })
+                    .fill($r('app.color.rj_red'))
+                    .margin({ top: 2, right: 6 })
+                }
+              }
+              .width('100%')
+              .height('100%')
+            }
+            .onClick(() => {
+              this.open(cell.date);
+            })
+          }, (cell: MonthCell) => cell.date)
+        }
+        .columnsTemplate('1fr 1fr 1fr 1fr 1fr 1fr 1fr')
+        .rowsTemplate('1fr 1fr 1fr 1fr 1fr 1fr')
+        .height(300)
+        .padding({ left: 16, right: 16 })
+
+        // 本月日记列表
+        List() {
+          ForEach(this.metas, (m: NoteMeta) => {
+            ListItem() {
+              Row() {
+                Text(m.date)
+                  .fontSize(12)
+                  .fontFamily('monospace')
+                  .fontColor($r('app.color.rj_text2'))
+                if (this.moodEmoji(m).length > 0) {
+                  Text(this.moodEmoji(m))
+                    .fontSize(14)
+                    .margin({ left: 10 })
+                }
+                Blank()
+                Text(m.words + ' 字')
+                  .fontSize(10)
+                  .fontFamily('monospace')
+                  .fontColor($r('app.color.rj_text3'))
+              }
+              .width('100%')
+              .padding({ left: 20, right: 20, top: 12, bottom: 12 })
+            }
+            .onClick(() => {
+              this.open(m.date);
+            })
+          }, (m: NoteMeta) => m.date)
+        }
+        .layoutWeight(1)
+        .divider({ strokeWidth: 1, color: $r('app.color.rj_line') })
+      } else {
+        // 列表视图（全部，倒序）
+        if (!this.loaded || this.metas.length === 0) {
+          Column() {
+            Text('还没有日记')
+              .fontSize(14)
+              .fontColor($r('app.color.rj_text3'))
+            Text('点下面的按钮，写今天')
+              .fontSize(11)
+              .fontColor($r('app.color.rj_text3'))
+              .margin({ top: 6 })
+          }
+          .margin({ top: 60 })
+        }
+        List() {
+          ForEach(this.metas, (m: NoteMeta) => {
+            ListItem() {
+              Column() {
+                Row() {
+                  Text(m.date)
+                    .fontSize(12)
+                    .fontFamily('monospace')
+                    .fontColor($r('app.color.rj_text2'))
+                  if (this.moodEmoji(m).length > 0) {
+                    Text(this.moodEmoji(m))
+                      .fontSize(14)
+                      .margin({ left: 10 })
+                  }
+                  Blank()
+                  Text(m.words + ' 字')
+                    .fontSize(10)
+                    .fontFamily('monospace')
+                    .fontColor($r('app.color.rj_text3'))
+                }
+                .width('100%')
+              }
+              .padding({ left: 20, right: 20, top: 14, bottom: 14 })
+            }
+            .onClick(() => {
+              this.open(m.date);
+            })
+          }, (m: NoteMeta) => m.date)
+        }
+        .layoutWeight(1)
+        .divider({ strokeWidth: 1, color: $r('app.color.rj_line') })
+      }
+
+      // 写今天
+      Button('写今天')
+        .fontSize(14)
+        .backgroundColor($r('app.color.rj_text'))
+        .fontColor($r('app.color.rj_bg'))
+        .height(44)
+        .width('86%')
+        .margin({ bottom: 28, top: 8 })
+        .onClick(() => {
+          this.open(todayKey());
+        })
     }
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.rj_bg'))
-    .alignContent(Alignment.Center)
   }
 }

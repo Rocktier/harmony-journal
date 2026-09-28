@@ -125,6 +125,14 @@ export class VaultService {
     return frame === null ? null : frame.salt;
   }
 
+  /**
+   * 新库的 salt（首次使用时生成一次，之后随索引文件存下来）。
+   * 索引文件本身就是 .rkd 帧，salt 就在帧头里 —— 不需要额外的"密码文件"。
+   */
+  newSalt(): Uint8Array {
+    return this.random(SALT_LEN);
+  }
+
   private random(n: number): Uint8Array {
     const rnd: cryptoFramework.Random = cryptoFramework.createRandom();
     return rnd.generateRandomSync(n)?.data ?? new Uint8Array(n);

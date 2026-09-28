@@ -2,13 +2,14 @@ import { AbilityConstant, ConfigurationConstant, UIAbility, Want } from '@kit.Ab
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 
+import { bootstrap } from '../data/NoteStoreHolder';
+
 const DOMAIN: number = 0x0000;
 const TAG: string = 'RockJournal';
 
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
-    // Journal 默认深色（家族 Nothing OS 风格）；
-    // Phase 4 加入主题系统后，这里改成跟 RockReader 一样按用户选的主题设 ColorMode。
+    // Journal 默认深色（家族 Nothing OS 风格）
     try {
       this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
     } catch (e) {
@@ -18,6 +19,11 @@ export default class EntryAbility extends UIAbility {
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
+    // 解锁（开发期 bypass）→ 载入索引 → 才进页面：
+    // 否则页面会拿着一个没解锁的 vault，读出来全是 null
+    bootstrap(this.context).then((ok: boolean) => {
+      hilog.info(DOMAIN, TAG, 'bootstrap ok=%{public}s', ok);
+    });
     windowStage.loadContent('pages/Index', (err) => {
       if (err.code) {
         hilog.error(DOMAIN, TAG, 'loadContent failed: %{public}s', JSON.stringify(err));
