@@ -155,12 +155,13 @@ export function monthGrid(monthKey: string, dates: string[]): MonthCell[] {
     const date: string = inMonth
       ? monthKey + '-' + pad2(dayNum)
       : shiftedDateKey(p.year, p.month, dayNum);
-    cells.push({
+    const cell: MonthCell = {
       date: date,
       day: inMonth ? dayNum : new Date(date + 'T00:00:00').getDate(),
       inMonth: inMonth,
       hasNote: set.has(date)
-    });
+    };
+    cells.push(cell);
   }
   return cells;
 }
@@ -214,7 +215,8 @@ export function searchNotes(texts: NoteText[], query: string): SearchHit[] {
     if (to < chars.length) {
       snippet = snippet + '…';
     }
-    hits.push({ date: item.date, snippet: snippet });
+    const hit: SearchHit = { date: item.date, snippet: snippet };
+    hits.push(hit);
   }
   return hits;
 }

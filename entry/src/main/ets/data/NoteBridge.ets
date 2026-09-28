@@ -89,7 +89,8 @@ export function linesToBlocks(lines: Span[][]): Block[] {
     if (cut.length === 0) {
       continue;
     }
-    out.push({ type: type, spans: cut, ref: '' });
+    const block: Block = { type: type, spans: cut, ref: '' };
+    out.push(block);
   }
   return out;
 }

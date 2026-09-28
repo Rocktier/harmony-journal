@@ -176,7 +176,8 @@ export function normalizeBlocks(blocks: Block[]): Block[] {
     if (type !== BLOCK_TYPE_IMG && spans.length === 0) {
       continue;
     }
-    out.push({ type: type, spans: spans, ref: type === BLOCK_TYPE_IMG ? b.ref : '' });
+    const kept: Block = { type: type, spans: spans, ref: type === BLOCK_TYPE_IMG ? b.ref : '' };
+    out.push(kept);
   }
   return out;
 }

@@ -29,7 +29,9 @@ export function backupFileName(dateKey: string): string {
 
 /** 明文 → 备份字节（页面层拿它去加密再写文件） */
 export function buildBackup(items: BackupItem[]): Uint8Array {
-  const json: string = JSON.stringify({ app: BACKUP_APP, v: BACKUP_VERSION, items: items });
+  // 同 NoteBlocks：JSON.stringify 的参数不能直接是裸对象字面量
+  const holder: BackupHolder = { app: BACKUP_APP, v: BACKUP_VERSION, items: items };
+  const json: string = JSON.stringify(holder);
   return utf8Encode(json);
 }
 
