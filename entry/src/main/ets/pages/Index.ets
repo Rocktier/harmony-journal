@@ -3,7 +3,7 @@ import { router } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 import { DEV_SHOW_BADGE } from '../common/DevFlags';
-import { NoteMeta, MonthCell, moodById, monthGrid, monthOf, searchNotes, shiftMonth, todayKey } from '../data/NoteMeta';
+import { NoteMeta, MonthCell, NoteText, SearchHit, moodById, monthGrid, monthOf, searchNotes, shiftMonth, todayKey } from '../data/NoteMeta';
 import { NoteStore } from '../data/NoteStore';
 import { getStore } from '../data/NoteStoreHolder';
 
@@ -23,7 +23,7 @@ struct Index {
   @State private mode: string = 'month';
   @State private monthKey: string = monthOf(todayKey());
   @State private query: string = '';
-  @State private hits: { date: string; snippet: string }[] = [];
+  @State private hits: SearchHit[] = [];
   @State private loaded: boolean = false;
   private store: NoteStore = getStore();
 
@@ -48,10 +48,14 @@ struct Index {
   }
 
   private runSearch(): void {
-    const texts: { date: string; text: string }[] = [];
+    const texts: NoteText[] = [];
     for (let i: number = 0; i < this.metas.length; i++) {
       const m: NoteMeta = this.metas[i];
-      texts.push({ date: m.date, text: this.store.readNote(m.date).map((b) => b.spans.map((s) => s.text).join('')).join('\n') });
+      const item: NoteText = {
+        date: m.date,
+        text: this.store.readNote(m.date).map((b) => b.spans.map((s) => s.text).join('')).join('\n')
+      };
+      texts.push(item);
     }
     this.hits = searchNotes(texts, this.query);
   }
@@ -132,7 +136,7 @@ struct Index {
             .margin({ top: 40 })
         }
         List() {
-          ForEach(this.hits, (hit: { date: string; snippet: string }) => {
+          ForEach(this.hits, (hit: SearchHit) => {
             ListItem() {
               Column() {
                 Text(hit.date)
@@ -153,7 +157,7 @@ struct Index {
             .onClick(() => {
               this.open(hit.date);
             })
-          }, (hit: { date: string; snippet: string }) => hit.date)
+          }, (hit: SearchHit) => hit.date)
         }
         .layoutWeight(1)
         .divider({ strokeWidth: 1, color: $r('app.color.rj_line') })

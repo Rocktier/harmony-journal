@@ -160,9 +160,11 @@ struct Editor {
   private save(): void {
     const blocks: Block[] = this.collect();
     // 图片块：正文里只有 ref，二进制永远不进文本流
-    const withImages: Block[] = blocks.concat(
-      this.imgRefs.map((ref: string) => ({ type: 'img', spans: [], ref: ref } as Block))
-    );
+    const withImages: Block[] = blocks;
+    for (let i: number = 0; i < this.imgRefs.length; i++) {
+      const imgBlock: Block = { type: 'img', spans: [], ref: this.imgRefs[i] };
+      withImages.push(imgBlock);
+    }
     const ok: boolean = this.store.writeNote(this.date, withImages, this.mood, this.moodText);
     this.saved = ok;
     this.words = wordCountOf(blocks);

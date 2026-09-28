@@ -1,7 +1,7 @@
 import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
-import { NONCE_LEN, SALT_LEN, TAG_LEN, VaultFrame, decodeFrame, encodeFrame, splitPayload } from './VaultFrame';
+import { NONCE_LEN, PayloadParts, SALT_LEN, TAG_LEN, VaultFrame, decodeFrame, encodeFrame, splitPayload } from './VaultFrame';
 
 /**
  * 加密 vault 服务（**设备端** —— 引 cryptoFramework，跑不了单测，靠装机实测）
@@ -97,7 +97,7 @@ export class VaultService {
       hilog.error(DOMAIN, TAG, 'not a valid rkd frame');
       return null;
     }
-    const parts: { ct: Uint8Array; tag: Uint8Array } | null = splitPayload(frame.payload);
+    const parts: PayloadParts | null = splitPayload(frame.payload);
     if (parts === null) {
       return null;
     }

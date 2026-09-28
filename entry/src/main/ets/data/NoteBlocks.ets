@@ -65,9 +65,16 @@ export function mergeSpans(raw: RawSpan[]): Span[] {
       bold: r.fontWeight === 9,
       italic: r.fontStyle === 1
     };
-    const last: Span = out.length > 0 ? out[out.length - 1] : null as unknown as Span;
-    if (last !== null && sameStyle(last, cur)) {
-      out[out.length - 1] = { text: last.text + cur.text, bold: last.bold, italic: last.italic };
+    // ArkTS 不允许 any/unknown/null 断言，所以用"有没有上一个"来判断，而不是取 null
+    if (out.length > 0) {
+      const lastIdx: number = out.length - 1;
+      const last: Span = out[lastIdx];
+      if (sameStyle(last, cur)) {
+        const joined: Span = { text: last.text + cur.text, bold: last.bold, italic: last.italic };
+        out[lastIdx] = joined;
+      } else {
+        out.push(cur);
+      }
     } else {
       out.push(cur);
     }
@@ -190,7 +197,9 @@ function toRaw(spans: Span[]): RawSpan[] {
 
 /** 序列化：自研 JSON（不是 HTML），十年后仍可读 */
 export function blocksToJson(blocks: Block[]): string {
-  return JSON.stringify({ v: 1, blocks: normalizeBlocks(blocks) });
+  // ArkTS：JSON.stringify 的参数若是裸对象字面量也会报错，先落到接口变量
+  const holder: RootHolder = { v: 1, blocks: normalizeBlocks(blocks) };
+  return JSON.stringify(holder);
 }
 
 /**

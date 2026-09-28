@@ -101,14 +101,21 @@ export function monthOf(dateKey: string): string {
   return dateKey.substring(0, 7);
 }
 
+/** 年月（ArkTS 不允许"对象字面量当类型"，必须显式声明接口） */
+export interface YearMonth {
+  year: number;
+  month: number;
+}
+
 /** 月份键 → 年月 */
-export function parseMonth(monthKey: string): { year: number; month: number } {
-  return { year: Number(monthKey.substring(0, 4)), month: Number(monthKey.substring(5, 7)) };
+export function parseMonth(monthKey: string): YearMonth {
+  const ym: YearMonth = { year: Number(monthKey.substring(0, 4)), month: Number(monthKey.substring(5, 7)) };
+  return ym;
 }
 
 /** 上一个 / 下一个月份键 */
 export function shiftMonth(monthKey: string, delta: number): string {
-  const p: { year: number; month: number } = parseMonth(monthKey);
+  const p: YearMonth = parseMonth(monthKey);
   let total: number = p.year * 12 + (p.month - 1) + delta;
   const y: number = Math.floor(total / 12);
   const m: number = total - y * 12 + 1;
@@ -135,7 +142,7 @@ export interface MonthCell {
  * 行数固定才能保证切换月份时日历不跳动（高度变化会让界面抖）。
  */
 export function monthGrid(monthKey: string, dates: string[]): MonthCell[] {
-  const p: { year: number; month: number } = parseMonth(monthKey);
+  const p: YearMonth = parseMonth(monthKey);
   const set: Set<string> = new Set<string>(dates);
   const first: Date = new Date(p.year, p.month - 1, 1);
   // JS 的 getDay()：周日=0；换算成周一=0
@@ -171,20 +178,26 @@ export interface SearchHit {
   snippet: string;
 }
 
+/** 搜索输入：一篇日记的日期 + 纯文本 */
+export interface NoteText {
+  date: string;
+  text: string;
+}
+
 /**
  * 全文搜索：大小写不敏感，命中处前后各取 12 个字符做摘要。
  *
  * ⚠️ 用 `Array.from` 切片再 join —— 直接 `substring` 可能把 emoji 的代理对切成两半，
  *    摘要里出现乱码方块（日记里 emoji 很多，这个坑必须绕）。
  */
-export function searchNotes(texts: { date: string; text: string }[], query: string): SearchHit[] {
+export function searchNotes(texts: NoteText[], query: string): SearchHit[] {
   const q: string = query.trim().toLowerCase();
   if (q.length === 0) {
     return [];
   }
   const hits: SearchHit[] = [];
   for (let i: number = 0; i < texts.length; i++) {
-    const item: { date: string; text: string } = texts[i];
+    const item: NoteText = texts[i];
     const lower: string = item.text.toLowerCase();
     const at: number = lower.indexOf(q);
     if (at < 0) {

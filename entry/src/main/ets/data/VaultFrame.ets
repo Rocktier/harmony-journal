@@ -69,16 +69,27 @@ export function decodeFrame(bytes: Uint8Array): VaultFrame | null {
   const nonce: Uint8Array = bytes.slice(p, p + NONCE_LEN);
   p += NONCE_LEN;
   const payload: Uint8Array = bytes.slice(p);
-  return { version: version, salt: salt, nonce: nonce, payload: payload };
+  // ArkTS：对象字面量必须先落到显式声明的局部变量/接口，不能直接 return 裸字面量
+  const frame: VaultFrame = { version: version, salt: salt, nonce: nonce, payload: payload };
+  return frame;
+}
+
+/** payload 切分结果（ArkTS 不允许用对象字面量当类型，必须显式声明接口） */
+export interface PayloadParts {
+  /** 密文 */
+  ct: Uint8Array;
+  /** GCM 认证标签（末 16 字节） */
+  tag: Uint8Array;
 }
 
 /** 把 payload 切成「密文 + tag」（解密时用它构造 GcmParamsSpec） */
-export function splitPayload(payload: Uint8Array): { ct: Uint8Array; tag: Uint8Array } | null {
+export function splitPayload(payload: Uint8Array): PayloadParts | null {
   if (payload === null || payload === undefined || payload.length < TAG_LEN) {
     return null;
   }
   const cut: number = payload.length - TAG_LEN;
-  return { ct: payload.slice(0, cut), tag: payload.slice(cut) };
+  const parts: PayloadParts = { ct: payload.slice(0, cut), tag: payload.slice(cut) };
+  return parts;
 }
 
 /** 判断一个文件是不是我们的库（不解密，只看头） */
