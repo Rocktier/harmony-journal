@@ -90,8 +90,17 @@ struct Index {
           .fontSize(10)
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_text3'))
+          .margin({ right: 14 })
           .onClick(() => {
             this.mode = this.mode === 'month' ? 'list' : 'month';
+          })
+        // 设置（导出备份的生命线入口 —— 藏深了等于没有）
+        Text('设置')
+          .fontSize(10)
+          .fontFamily('monospace')
+          .fontColor($r('app.color.rj_text3'))
+          .onClick(() => {
+            router.pushUrl({ url: 'pages/Settings' });
           })
       }
       .width('100%')

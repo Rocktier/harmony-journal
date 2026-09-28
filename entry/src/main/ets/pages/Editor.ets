@@ -1,6 +1,9 @@
 import { common } from '@kit.AbilityKit';
+import { fileIo as fs, fileUri, picker } from '@kit.CoreFileKit';
 import { router } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+
+import { ImageStore } from '../data/ImageStore';
 
 import { Block, Span, wordCountOf } from '../data/NoteBlocks';
 import { blocksToLines, linesToBlocks } from '../data/NoteBridge';
@@ -31,11 +34,16 @@ struct Editor {
   @State private words: number = 0;
   @State private saved: boolean = true;
   @State private lines: string[] = [];
+  @State private imgRefs: string[] = [];
+  @State private imgPaths: string[] = [];
   private store: NoteStore = getStore();
+  private images: ImageStore = new ImageStore();
   private controller: RichEditorController = new RichEditorController();
   private options: RichEditorOptions = { controller: this.controller };
 
   aboutToAppear(): void {
+    const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    this.images.open(ctx.filesDir);
     const params: object = router.getParams() as object;
     const holder: DateParam = params as DateParam;
     const d: string = holder.date !== undefined ? holder.date : '';
@@ -46,9 +54,17 @@ struct Editor {
       this.mood = meta.mood;
       this.moodText = meta.moodText;
     }
-    // 解密已有内容 → 行文本 → 回灌编辑器
+    // 解密已有内容 → 行文本 → 回灌编辑器；图片块单独提出来（正文只存 ref）
     const blocks: Block[] = this.store.readNote(this.date);
     this.lines = blocksToLines(blocks);
+    const refs: string[] = [];
+    for (let i: number = 0; i < blocks.length; i++) {
+      if (blocks[i].type === 'img' && blocks[i].ref.length > 0) {
+        refs.push(blocks[i].ref);
+      }
+    }
+    this.imgRefs = refs;
+    this.refreshImagePreviews(ctx);
     this.restore();
     this.words = wordCountOf(blocks);
     hilog.info(DOMAIN, TAG, 'open note %{public}s, blocks=%{public}d', this.date, blocks.length);
@@ -103,12 +119,54 @@ struct Editor {
     return linesToBlocks(rows);
   }
 
+  /** 图片解密到 cache 后拿到可显示路径（Image 组件不认密文） */
+  private refreshImagePreviews(ctx: common.UIAbilityContext): void {
+    const paths: string[] = [];
+    for (let i: number = 0; i < this.imgRefs.length; i++) {
+      paths.push(this.images.load(this.imgRefs[i], this.store.getVault(), ctx.cacheDir));
+    }
+    this.imgPaths = paths;
+  }
+
+  /** 选图 → 读原文件 → 加密落沙箱 → 只把 ref 记进正文 */
+  private async pickImage(): Promise<void> {
+    const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    const pv: picker.PhotoViewPicker = new picker.PhotoViewPicker();
+    try {
+      const res: picker.PhotoSelectResult = await pv.select({ maxSelectNumber: 1 });
+      if (res.photoUris.length === 0) {
+        return;
+      }
+      const path: string = fileUri.getPathFromUri(res.photoUris[0]);
+      const file: fs.File = fs.openSync(path, fs.OpenMode.READ_ONLY);
+      const buf: ArrayBuffer = new ArrayBuffer(fs.statSync(path).size);
+      fs.readSync(file.fd, buf);
+      fs.closeSync(file);
+
+      const ref: string = this.images.newRef();
+      if (!this.images.save(ref, this.store.getVault(), new Uint8Array(buf))) {
+        hilog.error(DOMAIN, TAG, 'save image failed');
+        return;
+      }
+      this.imgRefs = this.imgRefs.concat([ref]);
+      this.refreshImagePreviews(ctx);
+      this.save();
+      hilog.info(DOMAIN, TAG, 'image added: %{public}s', ref);
+    } catch (e) {
+      hilog.error(DOMAIN, TAG, 'pickImage failed: %{public}s', JSON.stringify(e));
+    }
+  }
+
   private save(): void {
     const blocks: Block[] = this.collect();
-    const ok: boolean = this.store.writeNote(this.date, blocks, this.mood, this.moodText);
+    // 图片块：正文里只有 ref，二进制永远不进文本流
+    const withImages: Block[] = blocks.concat(
+      this.imgRefs.map((ref: string) => ({ type: 'img', spans: [], ref: ref } as Block))
+    );
+    const ok: boolean = this.store.writeNote(this.date, withImages, this.mood, this.moodText);
     this.saved = ok;
     this.words = wordCountOf(blocks);
-    hilog.info(DOMAIN, TAG, 'save %{public}s ok=%{public}s blocks=%{public}d', this.date, ok, blocks.length);
+    hilog.info(DOMAIN, TAG, 'save %{public}s ok=%{public}s blocks=%{public}d', this.date, ok, withImages.length);
   }
 
   aboutToDisappear(): void {
@@ -184,6 +242,24 @@ struct Editor {
         })
         .padding({ left: 20, right: 20, top: 4 })
 
+      // 已插入的图片（缩略图；正文里只存加密文件的引用）
+      if (this.imgPaths.length > 0) {
+        Row() {
+          ForEach(this.imgPaths, (p: string) => {
+            if (p.length > 0) {
+              Image(p)
+                .width(64)
+                .height(64)
+                .objectFit(ImageFit.Cover)
+                .borderRadius(2)
+                .margin({ right: 8 })
+            }
+          }, (p: string, index: number) => index + p)
+        }
+        .width('100%')
+        .padding({ left: 20, top: 8, bottom: 4 })
+      }
+
       // 工具栏：B / I / 列表 / 保存
       Row() {
         Text('B')
@@ -207,6 +283,13 @@ struct Editor {
           .fontColor($r('app.color.rj_text'))
           .onClick(() => {
             this.controller.addTextSpan('- ', { style: { fontSize: 16, fontColor: '#FFFFFF' } });
+          })
+          .padding(10)
+        Text('图片')
+          .fontSize(12)
+          .fontColor($r('app.color.rj_text'))
+          .onClick(() => {
+            this.pickImage();
           })
           .padding(10)
         Blank()
