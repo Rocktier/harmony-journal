@@ -1,0 +1,20 @@
+{
+  "files": [
+    "**/*.ets"
+  ],
+  "ignore": [
+    "**/src/ohosTest/**/*",
+    "**/src/test/**/*",
+    "**/src/mock/**/*",
+    "**/node_modules/**/*",
+    "**/oh_modules/**/*",
+    "**/build/**/*",
+    "**/.preview/**/*"
+  ],
+  "ruleSet": [
+    "plugin:@typescript-eslint/recommended",
+    // 鸿蒙官方规则集：性能（@performance）与正确性/规范（@correctness）
+    "plugin:@performance/recommended",
+    "plugin:@correctness/recommended"
+  ]
+}

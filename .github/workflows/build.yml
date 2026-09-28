@@ -1,0 +1,249 @@
+name: build
+
+# 家族准则第十四章：所有构建一律走 GitHub Actions
+# 本仓库是 PUBLIC，不消耗私有仓库的 Actions 配额（配方照抄 RockReader，已验证可行）
+#
+# 触发：
+#   - push main / PR        → 编译校验 + 单测（日常）
+#   - push tag v*           → 上述之外，**额外把产物挂到 GitHub Release**（发版走这里）
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # 需要写权限才能在 tag 触发时创建 Release
+
+env:
+  OHOS_SDK_VER: 6.0.0.2-Release
+  SDK_ROOT: ${{ github.workspace }}/.ohos-sdk
+  # hvigor 通过 npm 从华为源安装；不用仓库里的 hvigorw 包装器（它不执行构建，会假绿）
+  HVIGOR_VER: 6.0.6
+
+jobs:
+  # ---------------------------------------------------------------
+  # 作业 1：纯逻辑单测 —— 不依赖鸿蒙 SDK
+  # ---------------------------------------------------------------
+  unit-test:
+    name: 纯逻辑单测
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 运行单测
+        run: |
+          npm install --no-audit --no-fund --registry=https://registry.npmmirror.com
+          npm test
+
+  # ---------------------------------------------------------------
+  # 作业 2：向下兼容的**编译证据**（API 15）
+  # ---------------------------------------------------------------
+  # 照 RockReader 2026-09-24 的做法：正式 product 将声明 compatibleSdkVersion = 5.0.4(16)，
+  # 公开 SDK 里没有 16，用 5.0.3-Release = API 15 编译：
+  # 通过 ⇒ 代码不含 16+ 的 API ⇒ 声明 16 成立（"用更严的条件证明更松的声明"）。
+  compat-15:
+    name: 兼容性编译校验（API 15）
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      OHOS_SDK_VER: 5.0.3-Release
+      SDK_ROOT: ${{ github.workspace }}/.ohos-sdk15
+      DEVECO_SDK_HOME: ${{ github.workspace }}/.ohos-sdk15
+      HOS_SDK_HOME: ${{ github.workspace }}/.ohos-sdk15
+      OHOS_BASE_SDK_HOME: ${{ github.workspace }}/.ohos-sdk15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 缓存 OpenHarmony SDK 15
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.SDK_ROOT }}
+          key: ohos-sdk15-${{ env.OHOS_SDK_VER }}-v1
+
+      - name: 准备 OpenHarmony SDK 15
+        run: bash .github/scripts/setup-ohos-sdk.sh "${OHOS_SDK_VER}" "${SDK_ROOT}"
+
+      - name: 安装 hvigor 构建链
+        run: |
+          npm install --no-audit --no-fund --no-save \
+            "@ohos/hvigor@${HVIGOR_VER}" "@ohos/hvigor-ohos-plugin@${HVIGOR_VER}" \
+            --registry=https://registry.npmmirror.com
+
+      # OpenHarmony SDK 没有 phone 这个设备类型的 syscap 集合 → 编译报 00303060。
+      # CI 临时换回 default；只影响 CI 工作区，不改仓库文件（RockReader 验证过的做法）。
+      - name: CI 专用：deviceTypes 临时换回 default
+        run: |
+          sed -i 's/"phone"/"default"/' entry/src/main/module.json5
+          grep -A3 'deviceTypes' entry/src/main/module.json5
+
+      - name: 用 API 15 编译（product=compat15）
+        run: |
+          export http_proxy=http://127.0.0.1:9
+          export https_proxy=http://127.0.0.1:9
+          export HTTP_PROXY=http://127.0.0.1:9
+          export HTTPS_PROXY=http://127.0.0.1:9
+          node node_modules/@ohos/hvigor/bin/hvigor.js assembleHap \
+            --mode module -p product=compat15 -p buildMode=debug --no-daemon --stacktrace
+
+      - name: 失败说明（这条失败意味着什么）
+        if: failure()
+        run: |
+          echo "::error::用 API 15 编译未通过 —— 说明代码里用到了 16 及以上的 API。"
+          echo "::error::后果：compatibleSdkVersion=5.0.4(16) 的声明站不住，5.0.4 设备上可能运行时崩溃。"
+          echo "::error::两条路：① 改代码去掉高版本 API ② 把 compatibleSdkVersion 抬到 20（放弃 API 16~19 设备）"
+
+  # ---------------------------------------------------------------
+  # 作业 3：ArkTS 编译校验 → HAP（tag 触发时同时发 Release）
+  # ---------------------------------------------------------------
+  build-hap:
+    name: ArkTS 编译校验 → HAP
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      DEVECO_SDK_HOME: ${{ github.workspace }}/.ohos-sdk
+      HOS_SDK_HOME: ${{ github.workspace }}/.ohos-sdk
+      OHOS_BASE_SDK_HOME: ${{ github.workspace }}/.ohos-sdk
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 安装 JDK（打包工具需要）
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 缓存 OpenHarmony SDK
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.SDK_ROOT }}
+          key: ohos-sdk-${{ env.OHOS_SDK_VER }}-v1
+
+      - name: 准备 OpenHarmony SDK
+        run: bash .github/scripts/setup-ohos-sdk.sh "${OHOS_SDK_VER}"
+
+      - name: 安装 hvigor 构建链
+        run: |
+          npm install --no-audit --no-fund --no-save \
+            "@ohos/hvigor@${HVIGOR_VER}" "@ohos/hvigor-ohos-plugin@${HVIGOR_VER}" \
+            --registry=https://registry.npmmirror.com
+
+      - name: 环境自检
+        run: |
+          echo "node: $(node -v)  java: $(java -version 2>&1 | head -1)"
+          echo "DEVECO_SDK_HOME=${DEVECO_SDK_HOME}"
+          ls -d "${DEVECO_SDK_HOME}"/* 2>/dev/null | head
+          node node_modules/@ohos/hvigor/bin/hvigor.js version
+
+      - name: CI 专用：deviceTypes 临时换回 default
+        run: |
+          sed -i 's/"phone"/"default"/' entry/src/main/module.json5
+          grep -A3 'deviceTypes' entry/src/main/module.json5
+
+      - name: 构建 HAP（product=ci）
+        run: |
+          # 只在这一步断网：hvigor 会联网拉 SDK 许可证文本，与 <SDK>/licenses/<id>.sha256 比对；
+          # CI 里没人点"同意" → 报 'The SDK license agreement is not accepted.'。
+          # 该检查在网络异常时返回空表从而放行。SDK 与 hvigor 都已本地就绪，编译本身不需要联网。
+          export http_proxy=http://127.0.0.1:9
+          export https_proxy=http://127.0.0.1:9
+          export HTTP_PROXY=http://127.0.0.1:9
+          export HTTPS_PROXY=http://127.0.0.1:9
+
+          node node_modules/@ohos/hvigor/bin/hvigor.js assembleHap \
+            --mode module -p product=ci -p buildMode=debug --no-daemon --stacktrace
+
+      - name: 校验 HAP 真的产出了（防止假绿）
+        run: |
+          set -e
+          echo "=== entry/build 下的产物 ==="
+          find entry/build -type f \( -name '*.hap' -o -name '*.app' \) 2>/dev/null || true
+          HAP="$(find entry/build -name '*.hap' -type f | head -1 || true)"
+          if [ -z "${HAP}" ]; then
+            echo "::error::构建命令退出成功，但没有产出任何 HAP —— 视为失败"
+            exit 1
+          fi
+          mkdir -p /tmp/artifacts
+          cp "${HAP}" /tmp/artifacts/
+          ls -lh /tmp/artifacts/
+          (cd /tmp/artifacts && sha256sum *.hap > SHA256SUMS && cat SHA256SUMS)
+          {
+            echo "### 构建产物"
+            echo ""
+            echo "| 文件 | 大小 | SHA256 |"
+            echo "|---|---|---|"
+            for f in /tmp/artifacts/*.hap; do
+              echo "| $(basename "$f") | $(stat -c%s "$f") bytes | $(sha256sum "$f" | cut -d' ' -f1) |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 上传 HAP（Artifacts）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hap-ci-${{ github.sha }}
+          path: /tmp/artifacts
+          if-no-files-found: warn
+          retention-days: 14
+
+      # tag v* 才会走到这里：打 tag = 发版，产物挂 Release
+      # 注意：产物是 product=ci（OpenHarmony）+ 未签名 → 只能做编译校验，**不能装到鸿蒙手机**
+      - name: 发布 Release（仅 tag v* 触发）
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TAG="${GITHUB_REF_NAME}"
+          ls -lh /tmp/artifacts/
+
+          PRE=""
+          case "$TAG" in *-*) PRE="--prerelease";; esac
+
+          cat > /tmp/release-notes.md <<'EOF'
+          ## 产物说明（务必先读）
+
+          - **来源**：GitHub Actions 构建，product = `ci`（runtimeOS = **OpenHarmony**），**未签名**
+          - **用途**：验证 ArkTS/ArkUI 代码可编译通过（编译校验）
+          - ⚠️ **不能安装到鸿蒙手机**：正式包需要 HarmonyOS SDK + AGC 签名
+          - 校验和见随附的 `SHA256SUMS`
+
+          ## 构建信息
+
+          EOF
+          {
+            echo "- commit: \`${GITHUB_SHA}\`"
+            echo "- workflow run: [#${GITHUB_RUN_NUMBER}](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+            echo ""
+            echo "## 产物指纹"
+            echo ""
+            echo '```'
+            cat /tmp/artifacts/SHA256SUMS
+            echo '```'
+          } >> /tmp/release-notes.md
+
+          gh release create "$TAG" /tmp/artifacts/*.hap /tmp/artifacts/SHA256SUMS \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "RockJournal ${TAG}" \
+            --notes-file /tmp/release-notes.md \
+            $PRE

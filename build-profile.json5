@@ -1,0 +1,85 @@
+{
+  "app": {
+    // ⚠️ **签名配置待补**（与 RockReader 不同的起点）：
+    //   RockReader 的 default/release 签名是 DevEco 自动签名 + AGC 发布证书。
+    //   Journal 需要先在 AGC 创建应用（包名 com.rocktier.rockjournal）→ 申请调试/发布证书
+    //   → 再在这里补 default（调试）与 release（发布）的 signingConfigs。
+    //   目前只保留 ci / compat15 两个**无需签名**的编译校验产物（照 RockReader 配方）。
+    "products": [
+      {
+        // 日常构建产物（HarmonyOS 单框架 6.x）。⚠️ **暂无 signingConfig** ——
+        // Journal 的调试/发布证书还没在 AGC 创建（需先在 AGC 注册应用 + 申请证书），
+        // 证书到位后在这里补 signingConfigs，并新增 release product（照 RockReader）。
+        // 没有签名配置时 debug 构建产出 **unsigned HAP**：编译校验够用，
+        // 但装进模拟器/真机需要签名（RockReader 的经验：装机走 DevEco 自动签名那套）。
+        "name": "default",
+        "compatibleSdkVersion": "5.0.4(16)",
+        "targetSdkVersion": "6.0.0(20)",
+        "runtimeOS": "HarmonyOS",
+        "buildOption": {}
+      },
+      {
+        // CI 专用：用公开可下载的 OpenHarmony SDK 做编译校验（HarmonyOS SDK 下载需登录华为账号）
+        // 目的 = 在 CI 上验证 ArkTS/ArkUI 代码能编译通过；正式包等签名证书到位后由 default 产物出
+        // 注：runtimeOS=OpenHarmony 时 hvigor 要求显式给出 compileSdkVersion，否则报 00303034
+        "name": "ci",
+        "compileSdkVersion": 20,
+        "compatibleSdkVersion": 20,
+        "runtimeOS": "OpenHarmony",
+        "buildOption": {}
+      },
+      {
+        // **向下兼容的编译证据**（照 RockReader 2026-09-24 的做法）：
+        // 拿公开 SDK 里最低可用的 5.0.3-Release = API 15 编译：通过 ⇒ 代码不含 16+ 的 API
+        // ⇒ 将来声明 compatibleSdkVersion 16 有编译证据（"用更严的条件证明更松的声明"）。
+        // ⚠️ 这个 product 只做编译校验，不动正式包的任何配置。
+        "name": "compat15",
+        "compileSdkVersion": 15,
+        "compatibleSdkVersion": 15,
+        "runtimeOS": "OpenHarmony",
+        "buildOption": {}
+      },
+      // ── 正式产物（占位，签名证书到位后放开 signingConfigs 并补进 products）──
+      // {
+      //   "name": "default",          // 日常调试（HarmonyOS 单框架 6.x）
+      //   "signingConfig": "default",
+      //   "compatibleSdkVersion": "5.0.4(16)",
+      //   "targetSdkVersion": "6.0.0(20)",
+      //   "runtimeOS": "HarmonyOS",
+      //   "buildOption": {}
+      // },
+      // {
+      //   "name": "release",          // 上架产物（Build App 出 .app 包，AGC 提审用）
+      //   "signingConfig": "release",
+      //   "compatibleSdkVersion": "5.0.4(16)",
+      //   "targetSdkVersion": "6.0.0(20)",
+      //   "runtimeOS": "HarmonyOS",
+      //   "buildOption": {}
+      // }
+    ],
+    "buildModeSet": [
+      {
+        "name": "debug"
+      },
+      {
+        "name": "release"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default",
+            "ci",
+            "compat15"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "module": {
+    "name": "entry",
+    "type": "entry",
+    "description": "$string:module_desc",
+    "mainElement": "EntryAbility",
+    // ⚠️ **"default" 不在华为允许的设备类型范围内**（RockReader 2026-09-26 被驳回第 2 条的教训，
+    //   直接照家族经验写死 phone/tablet）。CI 用 OpenHarmony SDK 编译时会临时 sed 换回 default
+    //   （OpenHarmony 没有 phone 的 syscap 集合），见 .github/workflows/build.yml。
+    "deviceTypes": [
+      "phone",
+      "tablet"
+    ],
+    "deliveryWithInstall": true,
+    "installationFree": false,
+    "pages": "$profile:main_pages",
+    // ⚠️ **本应用零联网：不申请任何权限**（家族铁律 3；RockReader 已验证零权限能过审）。
+    // 日记本比阅读器更纯粹：无字体下载、无文件关联 —— 从第一行代码起就没有联网理由。
+    // 将来若加云同步/广告需重新评估（家族准则：商业化后置，且那是一次大变更）。
+    "abilities": [
+      {
+        "name": "EntryAbility",
+        "srcEntry": "./ets/entryability/EntryAbility.ets",
+        "description": "$string:EntryAbility_desc",
+        "icon": "$media:startIcon",
+        "label": "$string:EntryAbility_label",
+        "startWindowIcon": "$media:startIcon",
+        "startWindowBackground": "$color:start_window_background",
+        "launchType": "singleton",
+        "exported": true,
+        "skills": [
+          {
+            "entities": [
+              "entity.system.home"
+            ],
+            "actions": [
+              "action.system.home"
+            ]
+          }
+        ]
+      }
+    ],
+    "extensionAbilities": [
+      {
+        "name": "EntryBackupAbility",
+        "srcEntry": "./ets/entrybackupability/EntryBackupAbility.ets",
+        "type": "backup",
+        "exported": false,
+        "metadata": [
+          {
+            "name": "ohos.extension.backup",
+            "resource": "$profile:backup_config"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "app": {
+    "bundleName": "com.rocktier.rockjournal",
+    "vendor": "Rocktier",
+    "versionCode": 10000,
+    "versionName": "0.1.0",
+    // 分层图标（foreground / background + layered_image.json）：
+    // 系统据此做遮罩、视差与深浅色适配 —— 家族规范，与 RockReader 同构。
+    "icon": "$media:layered_image",
+    "label": "$string:app_name"
+  }
+}

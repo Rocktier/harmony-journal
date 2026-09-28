@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "RockJournal main module"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "RockJournal"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "RockJournal"
+    }
+  ]
+}

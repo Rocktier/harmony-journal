@@ -1,0 +1,40 @@
+{
+  "color": [
+    {
+      "name": "start_window_background",
+      "value": "#000000"
+    },
+    {
+      "name": "rj_bg",
+      "value": "#000000"
+    },
+    {
+      "name": "rj_text",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "rj_text2",
+      "value": "#8CFFFFFF"
+    },
+    {
+      "name": "rj_text3",
+      "value": "#52FFFFFF"
+    },
+    {
+      "name": "rj_line",
+      "value": "#24FFFFFF"
+    },
+    {
+      "name": "rj_red",
+      "value": "#FF4A3D"
+    },
+    {
+      "name": "rj_card",
+      "value": "#08FFFFFF"
+    },
+    {
+      "name": "rj_g100",
+      "value": "#1A1A1A"
+    }
+  ]
+}

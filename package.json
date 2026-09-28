@@ -1,0 +1,12 @@
+{
+  "name": "rockjournal",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rock私记 / RockJournal — 纯离线加密日记本（本 package.json 只服务于纯逻辑单测，不参与 HAP 构建）",
+  "scripts": {
+    "test": "node test/run.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

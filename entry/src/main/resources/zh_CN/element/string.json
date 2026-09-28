@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "Rock私记主模块"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "Rock私记"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "Rock私记"
+    }
+  ]
+}
