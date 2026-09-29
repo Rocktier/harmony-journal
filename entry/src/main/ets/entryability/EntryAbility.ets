@@ -19,17 +19,19 @@ export default class EntryAbility extends UIAbility {
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
-    // 解锁（开发期 bypass）→ 载入索引 → 才进页面：
-    // 否则页面会拿着一个没解锁的 vault，读出来全是 null
+    // 启动准备（建目录 + 取/建 salt，不解锁）→ 进解锁页：
+    // 解锁在 pages/Unlock 完成（主密码 / 生物），解锁后才进 Index。
     bootstrap(this.context).then((ok: boolean) => {
       hilog.info(DOMAIN, TAG, 'bootstrap ok=%{public}s', ok);
-    });
-    windowStage.loadContent('pages/Index', (err) => {
-      if (err.code) {
-        hilog.error(DOMAIN, TAG, 'loadContent failed: %{public}s', JSON.stringify(err));
-        return;
+      if (ok) {
+        windowStage.loadContent('pages/Unlock', (err) => {
+          if (err.code) {
+            hilog.error(DOMAIN, TAG, 'loadContent failed: %{public}s', JSON.stringify(err));
+            return;
+          }
+          hilog.info(DOMAIN, TAG, 'loadContent succeeded');
+        });
       }
-      hilog.info(DOMAIN, TAG, 'loadContent succeeded');
     });
   }
 

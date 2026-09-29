@@ -2,7 +2,6 @@ import { common } from '@kit.AbilityKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
-import { DEV_PASSWORD, DEV_UNLOCK_BYPASS } from '../common/DevFlags';
 import { NoteStore } from './NoteStore';
 
 /**
@@ -17,6 +16,10 @@ const TAG: string = 'RockJournal';
 const INDEX_FILE: string = 'index.rkd';
 
 let instance: NoteStore | null = null;
+/** 当前 vault 的固定 salt（unlock 时传入并记住；详见 VaultService 设计铁律） */
+let vaultSalt: Uint8Array = new Uint8Array(0);
+/** 是否首次运行（解锁页据此切「设置密码」/「输入密码」） */
+let firstRun: boolean = false;
 
 export function getStore(): NoteStore {
   if (instance === null) {
@@ -26,10 +29,9 @@ export function getStore(): NoteStore {
 }
 
 /**
- * 启动初始化：建目录 → 取/建 salt → 解锁 → 载入索引
- *
- * 开发期（DEV_UNLOCK_BYPASS）直接用预设密码解锁，不弹锁（党哥 2026-09-28 定）。
- * 正式版：这里换成"解锁页"——生物优先、主密码兜底（见 task_plan Phase 8 待办）。
+ * 启动准备（替代原 bootstrap 的「自动解锁」）：建目录 → 取/建 salt → **不解锁**。
+ * 解锁移到 pages/Unlock.ets（主密码 / 生物），解锁后才进 Index。
+ * 返回 true 表示 store 已 open、salt 已就绪。
  */
 export async function bootstrap(ctx: common.UIAbilityContext): Promise<boolean> {
   const store: NoteStore = getStore();
@@ -49,18 +51,38 @@ export async function bootstrap(ctx: common.UIAbilityContext): Promise<boolean> 
   }
   if (salt === null) {
     salt = store.getVault().newSalt();
+    firstRun = true;
     hilog.info(DOMAIN, TAG, 'first run: new salt generated');
   }
+  vaultSalt = salt;
+  return true;
+}
 
-  const password: string = DEV_UNLOCK_BYPASS ? DEV_PASSWORD : DEV_PASSWORD; // 正式版走解锁页拿密码
-  const ok: boolean = await store.getVault().unlock(password, salt);
+/** 当前 vault 的 salt（解锁页用） */
+export function getSalt(): Uint8Array {
+  return vaultSalt;
+}
+
+/** 是否首次运行 */
+export function isFirstRun(): boolean {
+  return firstRun;
+}
+
+/**
+ * 用主密码解锁（解锁页调用）：PBKDF2 派生主密钥 → 载入索引。
+ * 首次运行且解锁成功 → 把 salt 随空索引落盘。
+ * ⚠️ 与 DevFlags.DEV_UNLOCK_BYPASS 无关：正式版只用用户输入的密码。
+ */
+export async function unlockWith(password: string): Promise<boolean> {
+  const ok: boolean = await getStore().getVault().unlock(password, vaultSalt);
   if (!ok) {
-    hilog.error(DOMAIN, TAG, 'bootstrap unlock failed');
     return false;
   }
-  store.loadIndex();
-  if (!fs.accessSync(indexPath)) {
-    store.saveIndex(); // 首次运行：把 salt 随空索引落盘
+  getStore().loadIndex();
+  if (firstRun) {
+    getStore().saveIndex();
+    firstRun = false;
+    hilog.info(DOMAIN, TAG, 'first run: index saved, salt persisted');
   }
   return true;
 }

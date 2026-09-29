@@ -1,5 +1,6 @@
 {
   "src": [
+    "pages/Unlock",
     "pages/Index",
     "pages/Editor",
     "pages/Settings",
