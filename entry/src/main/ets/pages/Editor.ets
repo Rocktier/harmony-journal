@@ -36,7 +36,6 @@ struct Editor {
   @State private lines: string[] = [];
   @State private imgRefs: string[] = [];
   @State private imgPaths: string[] = [];
-  @State private lines: string[] = [];
   private pendingLines: string[] = [];
   private store: NoteStore = getStore();
   private images: ImageStore = new ImageStore();
