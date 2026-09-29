@@ -87,16 +87,17 @@ struct Editor {
 
   /** 编辑器 → 块（保存路径：getSpans 碎片 → 合并 → 切行 → 块） */
   private collect(): Block[] {
-    // getSpans 返回的是联合类型 RichEditorSpan（text|image 二选一），
-    // ArkTS 不做结构化兼容，必须先 as 到具体成员类型才能取 .value 等字段
+    // getSpans 返回联合类型 RichEditorSpan；文本 span 的结构是
+    // { value, textStyle: { fontWeight, fontStyle, ... } } —— 样式在 textStyle 子对象里（查过 SDK d.ts）
     const spans: RichEditorSpan[] = this.controller.getSpans({ start: 0, end: -1 });
     const raws: RawSpan[] = [];
     for (let i: number = 0; i < spans.length; i++) {
       const t: RichEditorTextSpanResult = spans[i] as RichEditorTextSpanResult;
+      const st: RichEditorTextStyleResult | undefined = t.textStyle;
       raws.push({
         text: typeof t.value === 'string' ? t.value : '',
-        fontWeight: typeof t.fontWeight === 'number' ? t.fontWeight : 0,
-        fontStyle: typeof t.fontStyle === 'number' ? t.fontStyle : 0
+        fontWeight: st !== undefined && typeof st.fontWeight === 'number' ? st.fontWeight : 0,
+        fontStyle: st !== undefined && typeof st.fontStyle === 'number' ? st.fontStyle : 0
       });
     }
     // 按换行把 span 切成"行"，行内保留样式
@@ -138,15 +139,33 @@ struct Editor {
       if (res.photoUris.length === 0) {
         return;
       }
-      // 照片 uri（file://media/...）可直接打开 —— fileUri 模块没有 getPathFromUri（查过 .d.ts）
+      // 照片 uri 直接打开；fs 没有 fstatSync，且 uri 未必能 statSync —— 用循环读到 EOF（查过 .d.ts）
       const file: fs.File = fs.openSync(res.photoUris[0], fs.OpenMode.READ_ONLY);
-      const size: number = fs.fstatSync(file.fd).size;
-      const buf: ArrayBuffer = new ArrayBuffer(size);
-      fs.readSync(file.fd, buf);
-      fs.closeSync(file);
+      const bufSize: number = 1024 * 1024;
+      const chunks: Uint8Array[] = [];
+      let total: number = 0;
+      try {
+        while (true) {
+          const buf: ArrayBuffer = new ArrayBuffer(bufSize);
+          const readLen: number = fs.readSync(file.fd, buf);
+          if (readLen <= 0) {
+            break;
+          }
+          chunks.push(new Uint8Array(buf.slice(0, readLen)));
+          total += readLen;
+        }
+      } finally {
+        fs.closeSync(file);
+      }
+      const raw: Uint8Array = new Uint8Array(total);
+      let off: number = 0;
+      for (let i: number = 0; i < chunks.length; i++) {
+        raw.set(chunks[i], off);
+        off += chunks[i].length;
+      }
 
       const ref: string = this.images.newRef();
-      if (!this.images.save(ref, this.store.getVault(), new Uint8Array(buf))) {
+      if (!this.images.save(ref, this.store.getVault(), raw)) {
         hilog.error(DOMAIN, TAG, 'save image failed');
         return;
       }

@@ -44,11 +44,17 @@ struct Settings {
       return;
     }
     const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
-    const docPicker: picker.DocumentSavePicker = new picker.DocumentSavePicker();
+    // SDK 里没有 DocumentSavePicker 类 —— 保存走 DocumentViewPicker.save(DocumentSaveOptions)（查过 .d.ts）
+    const docPicker: picker.DocumentViewPicker = new picker.DocumentViewPicker();
     try {
-      const uri: string = await docPicker.save({
+      const saveOpt: picker.DocumentSaveOptions = {
         newFileNames: [backupFileName(new Date().toISOString().substring(0, 10))]
-      });
+      };
+      const uris: string[] = await docPicker.save(saveOpt);
+      if (uris.length === 0) {
+        return;
+      }
+      const uri: string = uris[0];
       const file: fs.File = fs.openSync(uri, fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
       try {
         fs.writeSync(file.fd, enc.buffer);
