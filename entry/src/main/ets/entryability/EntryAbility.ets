@@ -21,17 +21,37 @@ export default class EntryAbility extends UIAbility {
   onWindowStageCreate(windowStage: window.WindowStage): void {
     // 启动准备（建目录 + 取/建 salt，不解锁）→ 进解锁页：
     // 解锁在 pages/Unlock 完成（主密码 / 生物），解锁后才进 Index。
-    bootstrap(this.context).then((ok: boolean) => {
-      hilog.info(DOMAIN, TAG, 'bootstrap ok=%{public}s', ok);
-      if (ok) {
-        windowStage.loadContent('pages/Unlock', (err) => {
-          if (err.code) {
-            hilog.error(DOMAIN, TAG, 'loadContent failed: %{public}s', JSON.stringify(err));
-            return;
-          }
-          hilog.info(DOMAIN, TAG, 'loadContent succeeded');
-        });
+    //
+    // ⚠️ 白屏防线（实拍教训）：bootstrap 一旦 reject，`then` 不执行，
+    // loadContent 就永远不被调用 —— ability 停在 FOREGROUND 却 window attached #0，
+    // 用户看到的是桌面/黑屏，连报错都出不来。所以：**任何分支都必须 loadContent**。
+    let loaded: boolean = false;
+    const load = (reason: string): void => {
+      if (loaded) {
+        return;
       }
+      loaded = true;
+      windowStage.loadContent('pages/Unlock', (err) => {
+        if (err.code) {
+          hilog.error(DOMAIN, TAG, 'loadContent failed: %{public}s', JSON.stringify(err));
+          return;
+        }
+        hilog.info(DOMAIN, TAG, 'loadContent succeeded, via %{public}s', reason);
+      });
+    };
+    // 兜底：bootstrap 迟迟不回头也先把页面立起来
+    const timer: number = setTimeout(() => {
+      hilog.warn(DOMAIN, TAG, 'bootstrap timeout, load anyway');
+      load('timeout');
+    }, 3000);
+    bootstrap(this.context).then((ok: boolean) => {
+      clearTimeout(timer);
+      hilog.info(DOMAIN, TAG, 'bootstrap ok=%{public}s', ok);
+      load('resolved');
+    }).catch((e: Error) => {
+      clearTimeout(timer);
+      hilog.error(DOMAIN, TAG, 'bootstrap failed: %{public}s', JSON.stringify(e));
+      load('rejected');
     });
   }
 

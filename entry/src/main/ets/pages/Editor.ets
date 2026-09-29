@@ -1,5 +1,5 @@
 import { common } from '@kit.AbilityKit';
-import { fileIo as fs, picker } from '@kit.CoreFileKit';
+import { fileIo as fs, fileUri, picker } from '@kit.CoreFileKit';
 import { router } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
@@ -276,7 +276,7 @@ struct Editor {
         Row() {
           ForEach(this.imgPaths, (p: string) => {
             if (p.length > 0) {
-              Image(p)
+              Image(fileUri.getUriFromPath(p))
                 .width(64)
                 .height(64)
                 .objectFit(ImageFit.Cover)
