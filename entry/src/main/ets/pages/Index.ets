@@ -31,6 +31,14 @@ struct Index {
     this.reload();
   }
 
+  /**
+   * ⚠️ router.back 回来时 aboutToAppear **不会**重新触发（页面没销毁），
+   * 必须用 onPageShow 刷新 —— 不然编辑完回来，红点和列表都是旧数据（实拍抓到）。
+   */
+  onPageShow(): void {
+    this.reload();
+  }
+
   private reload(): void {
     this.metas = this.store.list();
     this.loaded = true;

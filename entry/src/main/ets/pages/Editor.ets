@@ -36,6 +36,8 @@ struct Editor {
   @State private lines: string[] = [];
   @State private imgRefs: string[] = [];
   @State private imgPaths: string[] = [];
+  @State private lines: string[] = [];
+  private pendingLines: string[] = [];
   private store: NoteStore = getStore();
   private images: ImageStore = new ImageStore();
   private controller: RichEditorController = new RichEditorController();
@@ -65,13 +67,16 @@ struct Editor {
     }
     this.imgRefs = refs;
     this.refreshImagePreviews(ctx);
-    this.restore();
+    // ⚠️ 不在这里 restore：aboutToAppear 时 RichEditor 还没 onReady，
+    // addTextSpan 会静默失败（实拍抓到：字数对但正文空）。灌入挪到 onReady。
+    this.pendingLines = blocksToLines(blocks);
     this.words = wordCountOf(blocks);
     hilog.info(DOMAIN, TAG, 'open note %{public}s, blocks=%{public}d', this.date, blocks.length);
   }
 
-  /** 把行文本灌回 RichEditor（块 → 行） */
+  /** 把行文本灌回 RichEditor（块 → 行）—— 必须在 onReady 之后调用 */
   private restore(): void {
+    this.lines = this.pendingLines;
     try {
       this.controller.deleteSpans({ start: 0, end: -1 });
     } catch (e) {
@@ -83,6 +88,7 @@ struct Editor {
       }
       this.controller.addTextSpan(this.lines[i], { style: { fontSize: 16, fontColor: '#FFFFFF' } });
     }
+    hilog.info(DOMAIN, TAG, 'restored %{public}d lines', this.lines.length);
   }
 
   /** 编辑器 → 块（保存路径：getSpans 碎片 → 合并 → 切行 → 块） */
@@ -259,6 +265,7 @@ struct Editor {
         .placeholder('写点什么…（# 标题、- 列表）', { font: { size: 16 }, fontColor: '#52FFFFFF' })
         .onReady(() => {
           this.setSpanStyle(false, false);
+          this.restore();
         })
         .onDidChange(() => {
           this.saved = false;
