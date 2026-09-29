@@ -25,7 +25,6 @@ struct Settings {
   @State private lastBackup: string = '从未';
   @State private toast: string = '';
   private store = getStore();
-  private backup: BackupService = new BackupService();
 
   aboutToAppear(): void {
     this.noteCount = this.store.list().length;
@@ -217,10 +216,4 @@ struct Settings {
     .height('100%')
     .backgroundColor($r('app.color.rj_bg'))
   }
-}
-
-interface BackupHolder {
-  app?: string;
-  v?: number;
-  items?: { date: string; meta: object; blocks: object[] }[];
 }

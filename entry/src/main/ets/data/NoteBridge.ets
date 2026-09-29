@@ -13,7 +13,7 @@
  * ⚠️ 图片块（img）当前不参与行文本转换：MVP 阶段图片插入后置，
  *    序列化的块里若有 img，还原时会退化成"图片占位行"，不会丢数据（ref 仍在 JSON 里）。
  */
-import { Block, BLOCK_TYPE_H, BLOCK_TYPE_IMG, BLOCK_TYPE_LI, BLOCK_TYPE_P, Span } from './NoteBlocks';
+import { Block, BlockType, BLOCK_TYPE_H, BLOCK_TYPE_IMG, BLOCK_TYPE_LI, BLOCK_TYPE_P, Span } from './NoteBlocks';
 
 export const H_PREFIX: string = '# ';
 export const LI_PREFIX: string = '- ';
@@ -25,7 +25,7 @@ export interface MarkdownHit {
 }
 
 /** 行文本 → 块类型（只认行首前缀，避免正文里写个 '-' 就被当列表） */
-export function blockTypeOfLine(line: string): string {
+export function blockTypeOfLine(line: string): BlockType {
   if (line.startsWith(H_PREFIX)) {
     return BLOCK_TYPE_H;
   }
@@ -83,14 +83,15 @@ export function linesToBlocks(lines: Span[][]): Block[] {
       continue;
     }
     const first: string = spans[0].text;
-    const type: string = blockTypeOfLine(first);
+    const type: BlockType = blockTypeOfLine(first);
     const cut: Span[] = spans.slice();
     // 前缀只可能落在这一行的第一个 span 上
     const stripped: string = stripPrefix(first);
     if (stripped.length === 0) {
       cut.shift();
     } else {
-      cut[0] = { text: stripped, bold: spans[0].bold, italic: spans[0].italic };
+      const head: Span = { text: stripped, bold: spans[0].bold, italic: spans[0].italic };
+      cut[0] = head;
     }
     if (cut.length === 0) {
       continue;

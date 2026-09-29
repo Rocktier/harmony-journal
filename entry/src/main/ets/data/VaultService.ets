@@ -36,13 +36,15 @@ export class VaultService {
   async unlock(password: string, salt: Uint8Array): Promise<boolean> {
     try {
       const kdf: cryptoFramework.Kdf = cryptoFramework.createKdf('PBKDF2|SHA256');
-      const secret: cryptoFramework.DataBlob = kdf.generateSecretSync({
+      // ArkTS：给 API 传参也不能用裸对象字面量，先落到 SDK 声明的类型变量
+      const spec: cryptoFramework.PBKDF2Spec = {
         algName: 'PBKDF2',
         password: password,
         salt: salt,
         iterations: PBKDF2_ITERATIONS,
         keySize: KEY_SIZE
-      });
+      };
+      const secret: cryptoFramework.DataBlob = kdf.generateSecretSync(spec);
       const gen: cryptoFramework.SymKeyGenerator = cryptoFramework.createSymKeyGenerator('AES256');
       this.key = gen.convertKeySync(secret);
       hilog.info(DOMAIN, TAG, 'unlocked');

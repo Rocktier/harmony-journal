@@ -1,5 +1,5 @@
 import { common } from '@kit.AbilityKit';
-import { fileIo as fs, fileUri, picker } from '@kit.CoreFileKit';
+import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import { router } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
@@ -7,7 +7,7 @@ import { ImageStore } from '../data/ImageStore';
 
 import { Block, Span, wordCountOf } from '../data/NoteBlocks';
 import { blocksToLines, linesToBlocks } from '../data/NoteBridge';
-import { MOODS, MOOD_CUSTOM_ID, NoteMeta, isValidDateKey } from '../data/NoteMeta';
+import { MOODS, Mood, NoteMeta, isValidDateKey } from '../data/NoteMeta';
 import { NoteStore } from '../data/NoteStore';
 import { getStore } from '../data/NoteStoreHolder';
 import { RawSpan } from '../data/NoteBlocks';
@@ -87,15 +87,16 @@ struct Editor {
 
   /** 编辑器 → 块（保存路径：getSpans 碎片 → 合并 → 切行 → 块） */
   private collect(): Block[] {
-    const spans: Array<RichEditorTextSpanResult> = this.controller.getSpans({ start: 0, end: -1 }) as Array<RichEditorTextSpanResult>;
+    // getSpans 返回的是联合类型 RichEditorSpan（text|image 二选一），
+    // ArkTS 不做结构化兼容，必须先 as 到具体成员类型才能取 .value 等字段
+    const spans: RichEditorSpan[] = this.controller.getSpans({ start: 0, end: -1 });
     const raws: RawSpan[] = [];
     for (let i: number = 0; i < spans.length; i++) {
-      const s: RichEditorTextSpanResult = spans[i];
-      const v: RichEditorSpan = s as RichEditorSpan;
+      const t: RichEditorTextSpanResult = spans[i] as RichEditorTextSpanResult;
       raws.push({
-        text: typeof v.value === 'string' ? v.value : '',
-        fontWeight: typeof v.fontWeight === 'number' ? v.fontWeight : 0,
-        fontStyle: typeof v.fontStyle === 'number' ? v.fontStyle : 0
+        text: typeof t.value === 'string' ? t.value : '',
+        fontWeight: typeof t.fontWeight === 'number' ? t.fontWeight : 0,
+        fontStyle: typeof t.fontStyle === 'number' ? t.fontStyle : 0
       });
     }
     // 按换行把 span 切成"行"，行内保留样式
@@ -137,9 +138,10 @@ struct Editor {
       if (res.photoUris.length === 0) {
         return;
       }
-      const path: string = fileUri.getPathFromUri(res.photoUris[0]);
-      const file: fs.File = fs.openSync(path, fs.OpenMode.READ_ONLY);
-      const buf: ArrayBuffer = new ArrayBuffer(fs.statSync(path).size);
+      // 照片 uri（file://media/...）可直接打开 —— fileUri 模块没有 getPathFromUri（查过 .d.ts）
+      const file: fs.File = fs.openSync(res.photoUris[0], fs.OpenMode.READ_ONLY);
+      const size: number = fs.fstatSync(file.fd).size;
+      const buf: ArrayBuffer = new ArrayBuffer(size);
       fs.readSync(file.fd, buf);
       fs.closeSync(file);
 
@@ -211,7 +213,7 @@ struct Editor {
 
       // 心情
       Row() {
-        ForEach(MOODS, (m: { id: string; emoji: string; label: string }) => {
+        ForEach(MOODS, (m: Mood) => {
           Text(m.emoji)
             .fontSize(20)
             .padding({ left: 6, right: 6 })
@@ -223,7 +225,7 @@ struct Editor {
               }
               this.save();
             })
-        }, (m: { id: string; emoji: string; label: string }) => m.id)
+        }, (m: Mood) => m.id)
       }
       .width('100%')
       .padding({ left: 14, bottom: 8 })
