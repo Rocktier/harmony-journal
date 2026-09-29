@@ -26,6 +26,15 @@ const KEY_SIZE: number = 32; // AES-256
 export class VaultService {
   /** 派生出的主密钥（只活在当前进程内存里，退出即销毁） */
   private key: cryptoFramework.SymKey | null = null;
+  /**
+   * 本 vault 的 salt（unlock 时传入并记住）。
+   *
+   * ⚠️ **设计铁律：一个 vault 一个 salt，所有文件共用**——
+   * 曾实测踩坑：encrypt() 内部每次随机 salt 的话，每篇文件用不同 key 加密，
+   * 同会话内（key 在内存）读写自洽，**跨会话必崩**（重启后按帧头 salt 派生的 key
+   * 对不上任何历史数据，17630001）。nonce 必须每次随机，salt 必须永远固定。
+   */
+  private salt: Uint8Array = new Uint8Array(0);
 
   /** 是否已解锁 */
   isUnlocked(): boolean {
@@ -47,6 +56,7 @@ export class VaultService {
       const secret: cryptoFramework.DataBlob = kdf.generateSecretSync(spec);
       const gen: cryptoFramework.SymKeyGenerator = cryptoFramework.createSymKeyGenerator('AES256');
       this.key = gen.convertKeySync(secret);
+      this.salt = salt;
       hilog.info(DOMAIN, TAG, 'unlocked');
       return true;
     } catch (e) {
@@ -62,14 +72,13 @@ export class VaultService {
     hilog.info(DOMAIN, TAG, 'locked');
   }
 
-  /** 加密：产出完整 .rkd 帧字节（salt/nonce 内部随机生成，随帧一起存） */
+  /** 加密：产出完整 .rkd 帧字节（salt = 本 vault 固定值；nonce 每次随机） */
   encrypt(plain: Uint8Array): Uint8Array | null {
     if (this.key === null) {
       hilog.error(DOMAIN, TAG, 'encrypt before unlock');
       return null;
     }
     try {
-      const salt: Uint8Array = this.random(SALT_LEN);
       const nonce: Uint8Array = this.random(NONCE_LEN);
       const cipher: cryptoFramework.Cipher = cryptoFramework.createCipher('AES256|GCM|PKCS7');
       const params: cryptoFramework.GcmParamsSpec = {
@@ -81,7 +90,8 @@ export class VaultService {
       cipher.initSync(cryptoFramework.CryptoMode.ENCRYPT_MODE, this.key, params);
       // GCM 的 doFinal 输出 = 密文‖tag
       const out: cryptoFramework.DataBlob = cipher.doFinalSync({ data: plain });
-      return encodeFrame({ version: 1, salt: salt, nonce: nonce, payload: out.data });
+      const frame: VaultFrame = { version: 1, salt: this.salt, nonce: nonce, payload: out.data };
+      return encodeFrame(frame);
     } catch (e) {
       hilog.error(DOMAIN, TAG, 'encrypt failed: %{public}s', JSON.stringify(e));
       return null;

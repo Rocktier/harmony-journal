@@ -204,9 +204,9 @@ struct Index {
                   .fontFamily('monospace')
                   .fontColor(cell.inMonth ? $r('app.color.rj_text') : $r('app.color.rj_text3'))
                 if (cell.hasNote) {
-                  Circle({ width: 5, height: 5 })
+                  Circle({ width: 8, height: 8 })
                     .fill($r('app.color.rj_red'))
-                    .margin({ top: 2, right: 6 })
+                    .margin({ top: 3, right: 8 })
                 }
               }
               .width('100%')
