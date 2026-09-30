@@ -7,7 +7,7 @@ import { ImageStore } from '../data/ImageStore';
 
 import { Block, Span, wordCountOf } from '../data/NoteBlocks';
 import { blocksToLines, linesToBlocks } from '../data/NoteBridge';
-import { MOODS, Mood, NoteMeta, isValidDateKey } from '../data/NoteMeta';
+import { MOODS, Mood, NoteMeta, isValidDateKey, todayKey } from '../data/NoteMeta';
 import { NoteStore } from '../data/NoteStore';
 import { getStore } from '../data/NoteStoreHolder';
 import { RawSpan } from '../data/NoteBlocks';
@@ -28,6 +28,8 @@ const TAG: string = 'RockJournal';
 @Entry
 @Component
 struct Editor {
+  /** 这一篇的主键（新建时先占位，首次保存才真正落盘） */
+  @State private entryId: string = '';
   @State private date: string = '';
   @State private mood: string = '';
   @State private moodText: string = '';
@@ -36,6 +38,9 @@ struct Editor {
   @State private lines: string[] = [];
   @State private imgRefs: string[] = [];
   @State private imgPaths: string[] = [];
+  /** 这**一天**的全部日记（切换条用；只有 >1 篇才显示） */
+  @State private dayEntries: NoteMeta[] = [];
+  @State private dayIndex: number = -1;
   private pendingLines: string[] = [];
   private store: NoteStore = getStore();
   private images: ImageStore = new ImageStore();
@@ -46,17 +51,44 @@ struct Editor {
     const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
     this.images.open(ctx.filesDir);
     const params: object = router.getParams() as object;
-    const holder: DateParam = params as DateParam;
-    const d: string = holder.date !== undefined ? holder.date : '';
-    this.date = isValidDateKey(d) ? d : new Date().toISOString().substring(0, 10);
+    const holder: EntryParam = params as EntryParam;
+    const reqId: string = holder.id !== undefined ? holder.id : '';
+    const rawDate: string = holder.date !== undefined ? holder.date : '';
+    // ⚠️ N3 修复：原来用 `toISOString()`（UTC）回退 —— 与 `todayKey()`（本地时区）不一致，
+    //    导致每天 00:00~08:00 之间新建会锁到**前一天**。"今天"只能有一个定义。
+    const fallbackDate: string = isValidDateKey(rawDate) ? rawDate : todayKey();
 
-    const meta: NoteMeta | null = this.store.metaOf(this.date);
+    // 打开目标：**优先认 id**（点搜索结果要精确命中那篇），否则打开这天最新的一篇
+    let target: NoteMeta | null = reqId.length > 0 ? this.store.byId(reqId) : null;
+    if (target === null && isValidDateKey(rawDate)) {
+      target = this.store.newestOfDate(rawDate);
+    }
+    if (target !== null) {
+      this.date = target.date;
+      this.entryId = target.id;
+      this.loadEntry(target.id, ctx);
+    } else {
+      // 这天还没有任何一篇 ⇒ 新建（先占位 id，写了才会真正落盘）
+      this.date = fallbackDate;
+      this.entryId = this.store.newEntryId();
+      this.imgRefs = [];
+      this.refreshImagePreviews(ctx);
+      this.pendingLines = [];
+      this.words = 0;
+    }
+    this.resolveDayList();
+    hilog.info(DOMAIN, TAG, 'open note id=%{public}s date=%{public}s', this.entryId, this.date);
+  }
+
+  /** 把某一篇读进来（同时带上它的心情） */
+  private loadEntry(id: string, ctx: common.UIAbilityContext): void {
+    const meta: NoteMeta | null = this.store.byId(id);
     if (meta !== null) {
       this.mood = meta.mood;
       this.moodText = meta.moodText;
     }
     // 解密已有内容 → 行文本 → 回灌编辑器；图片块单独提出来（正文只存 ref）
-    const blocks: Block[] = this.store.readNote(this.date);
+    const blocks: Block[] = this.store.readEntry(id);
     this.lines = blocksToLines(blocks);
     const refs: string[] = [];
     for (let i: number = 0; i < blocks.length; i++) {
@@ -66,11 +98,55 @@ struct Editor {
     }
     this.imgRefs = refs;
     this.refreshImagePreviews(ctx);
-    // ⚠️ 不在这里 restore：aboutToAppear 时 RichEditor 还没 onReady，
-    // addTextSpan 会静默失败（实拍抓到：字数对但正文空）。灌入挪到 onReady。
+    // ⚠️ 不在这里灌入：RichEditor 未 onReady 时 addTextSpan 会静默失败（实拍抓到）。
     this.pendingLines = blocksToLines(blocks);
     this.words = wordCountOf(blocks);
-    hilog.info(DOMAIN, TAG, 'open note %{public}s, blocks=%{public}d', this.date, blocks.length);
+  }
+
+  /** 刷新"这一天有几篇、当前是第几篇"（切换条的数据源） */
+  private resolveDayList(): void {
+    this.dayEntries = this.store.entriesOfDate(this.date);
+    let at: number = -1;
+    for (let i: number = 0; i < this.dayEntries.length; i++) {
+      if (this.dayEntries[i].id === this.entryId) {
+        at = i;
+      }
+    }
+    this.dayIndex = at;
+  }
+
+  /** 切换到这一天的上一篇/下一篇（**先保存当前**，否则丢编辑中的内容） */
+  private async switchTo(delta: number): Promise<void> {
+    const next: number = this.dayIndex + delta;
+    if (next < 0 || next >= this.dayEntries.length) {
+      return;
+    }
+    this.save();
+    const target: NoteMeta = this.dayEntries[next];
+    const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    this.entryId = target.id;
+    this.loadEntry(target.id, ctx);
+    this.resolveDayList();
+    this.restore();
+    hilog.info(DOMAIN, TAG, 'switch to %{public}s (%{public}d/%{public}d)', target.id, this.dayIndex + 1, this.dayEntries.length);
+  }
+
+  /** 这天再来一篇（先保存当前的；新篇写了才会落盘，不会留下空日记） */
+  private async addAnotherHere(): Promise<void> {
+    this.save();
+    const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    this.entryId = this.store.newEntryId();
+    this.mood = '';
+    this.moodText = '';
+    this.lines = [];
+    this.imgRefs = [];
+    this.imgPaths = [];
+    this.words = 0;
+    this.saved = true;
+    this.pendingLines = [];
+    this.resolveDayList();
+    this.restore();
+    hilog.info(DOMAIN, TAG, 'add another entry at %{public}s id=%{public}s', this.date, this.entryId);
   }
 
   /** 把行文本灌回 RichEditor（块 → 行）—— 必须在 onReady 之后调用 */
@@ -192,10 +268,14 @@ struct Editor {
       const imgBlock: Block = { type: 'img', spans: [], ref: this.imgRefs[i] };
       withImages.push(imgBlock);
     }
-    const ok: boolean = this.store.writeNote(this.date, withImages, this.mood, this.moodText);
+    const ok: boolean = this.store.saveEntry(this.entryId, this.date, withImages, this.mood, this.moodText);
     this.saved = ok;
     this.words = wordCountOf(blocks);
-    hilog.info(DOMAIN, TAG, 'save %{public}s ok=%{public}s blocks=%{public}d', this.date, ok, withImages.length);
+    if (ok) {
+      // 保存后这一天的篇数/次序可能变了 ⇒ 切换条必须跟着刷新
+      this.resolveDayList();
+    }
+    hilog.info(DOMAIN, TAG, 'save id=%{public}s ok=%{public}s blocks=%{public}d', this.entryId, ok, withImages.length);
   }
 
   aboutToDisappear(): void {
@@ -235,6 +315,46 @@ struct Editor {
       }
       .width('100%')
       .padding({ left: 20, right: 20, top: 16, bottom: 10 })
+
+      // 这天的其它篇目（**只有多篇才出现** —— 单篇时界面保持零干扰）
+      if (this.dayEntries.length > 1) {
+        Row() {
+          Text('本日 ' + this.dayEntries.length + ' 篇')
+            .fontSize(10)
+            .fontFamily('monospace')
+            .fontColor($r('app.color.rj_text3'))
+          Blank()
+          Text('‹')
+            .fontSize(16)
+            .fontColor(this.dayIndex > 0 ? $r('app.color.rj_text2') : $r('app.color.rj_line'))
+            .padding({ left: 10, right: 10 })
+            .onClick(() => {
+              this.switchTo(-1);
+            })
+          Text((this.dayIndex < 0 ? this.dayEntries.length : this.dayIndex + 1) + '/' + this.dayEntries.length)
+            .fontSize(11)
+            .fontFamily('monospace')
+            .fontColor($r('app.color.rj_text2'))
+          Text('›')
+            .fontSize(16)
+            .fontColor(this.dayIndex >= 0 && this.dayIndex < this.dayEntries.length - 1
+              ? $r('app.color.rj_text2') : $r('app.color.rj_line'))
+            .padding({ left: 10, right: 10 })
+            .onClick(() => {
+              this.switchTo(1);
+            })
+          Text('＋')
+            .fontSize(14)
+            .fontColor($r('app.color.rj_text'))
+            .fontWeight(FontWeight.Bold)
+            .padding({ left: 12 })
+            .onClick(() => {
+              this.addAnotherHere();
+            })
+        }
+        .width('100%')
+        .padding({ left: 20, right: 20, top: 2, bottom: 4 })
+      }
 
       // 心情
       Row() {
@@ -346,6 +466,12 @@ struct Editor {
   }
 }
 
-interface DateParam {
+/**
+ * 打开某一篇：
+ *  - 带 `id` ⇒ 精确打开那篇（搜索结果、未来的时间轴都用这个）
+ *  - 只有 `date` ⇒ 打开这天最新的一篇；这天没写过就新建
+ */
+interface EntryParam {
+  id?: string;
   date?: string;
 }

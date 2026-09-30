@@ -20,8 +20,6 @@ import { NONCE_LEN, PayloadParts, SALT_LEN, TAG_LEN, VaultFrame, decodeFrame, en
  */
 const DOMAIN: number = 0x0000;
 const TAG: string = 'RockJournal';
-const PBKDF2_ITERATIONS: number = 100000;
-const KEY_SIZE: number = 32; // AES-256
 
 export class VaultService {
   /** 派生出的主密钥（只活在当前进程内存里，退出即销毁） */
@@ -41,26 +39,19 @@ export class VaultService {
     return this.key !== null;
   }
 
-  /** 用主密码解锁（PBKDF2 → AES-256 主密钥，只存内存） */
-  async unlock(password: string, salt: Uint8Array): Promise<boolean> {
+  /**
+   * 用「已解封」的主密钥字节解锁（主密钥由 KeyCustody 用密码或生物解封后传入，只存内存）。
+   * salt 仍随帧头写入每个 .rkd 文件（兼容历史布局），此处仅记录备用。
+   */
+  setKeyFromRaw(raw: Uint8Array, salt: Uint8Array): boolean {
     try {
-      const kdf: cryptoFramework.Kdf = cryptoFramework.createKdf('PBKDF2|SHA256');
-      // ArkTS：给 API 传参也不能用裸对象字面量，先落到 SDK 声明的类型变量
-      const spec: cryptoFramework.PBKDF2Spec = {
-        algName: 'PBKDF2',
-        password: password,
-        salt: salt,
-        iterations: PBKDF2_ITERATIONS,
-        keySize: KEY_SIZE
-      };
-      const secret: cryptoFramework.DataBlob = kdf.generateSecretSync(spec);
       const gen: cryptoFramework.SymKeyGenerator = cryptoFramework.createSymKeyGenerator('AES256');
-      this.key = gen.convertKeySync(secret);
+      this.key = gen.convertKeySync({ data: raw });
       this.salt = salt;
-      hilog.info(DOMAIN, TAG, 'unlocked');
+      hilog.info(DOMAIN, TAG, 'unlocked via raw key');
       return true;
     } catch (e) {
-      hilog.error(DOMAIN, TAG, 'unlock failed: %{public}s', JSON.stringify(e));
+      hilog.error(DOMAIN, TAG, 'setKeyFromRaw failed: %{public}s', JSON.stringify(e));
       this.key = null;
       return false;
     }

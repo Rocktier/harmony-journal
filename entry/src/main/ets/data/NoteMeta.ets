@@ -31,20 +31,89 @@ export function moodById(id: string): Mood | null {
   return null;
 }
 
-/** 一篇日记的元数据（索引里存的东西，正文单独一个加密文件） */
+/**
+ * 一篇日记的元数据（索引里存的东西，正文单独一个加密文件）
+ *
+ * ⚠️ **N2（一天多篇）：`id` 才是主键，`date` 只是属性。**
+ * 历史上 date 兼主键兼文件名，导致"同一天再写会覆盖"。
+ * 现在正文文件 = `notes/<id>.rkd`，同一天可以有任意多篇。
+ */
 export interface NoteMeta {
-  /** 日期键 yyyy-MM-dd */
+  /** 主键：一条日记一个 id（同时是正文文件名） */
+  id: string;
+  /** 归属日期键 yyyy-MM-dd（**不再是主键**，同一天可多篇） */
   date: string;
+  /** 创建时间戳（毫秒）—— 同一天多篇的排序依据 */
+  createdAt: number;
   /** 心情 id；未选则空串 */
   mood: string;
   /** 自定义心情的文案（mood === 'custom' 时有效） */
   moodText: string;
+  /**
+   * 摘要（**缓存进索引**的一小段正文，供列表/时间轴直接显示）
+   *
+   * ⚠️ 为什么缓存而不是"渲染时再解密"：索引本来整块在内存里，带一个字符串 = **零额外 IO**；
+   *    而渲染时解密 = 每行一个文件 IO + 解密，几百行必崩（冷启动铁律①）。
+   *    用户视角：时间轴里能看到"自己写过的话"，隧道才成立，光有日期只是张表。
+   * ⚠️ 老数据没有这个字段 ⇒ 空串（下次编辑该篇才补上），显示时优雅降级。
+   */
+  preview: string;
   /** 最后更新时间戳（毫秒） */
   updatedAt: number;
   /** 字数 */
   words: number;
   /** 是否含图片 */
   hasImage: boolean;
+  /**
+   * 第一张图片的相对路径（`img/<id>.enc`），没有图则空串。
+   * ⚠️ 与 preview 同理：**缓存进索引**，时间轴才能只解图片、不必解密整篇 ——
+   *    否则想显示缩略图就得 readEntry 一遍，又是每行一次 IO（铁律①）。
+   */
+  imgRef: string;
+}
+
+/**
+ * 生成一篇新日记的 id（纯逻辑，可单测）
+ *
+ * 照 `ImageStore.newRef()` 的套路：时间戳 base36 + 随机 base36。
+ * ⚠️ 它会被直接拿去做**文件名**，所以必须：
+ *  ① 纯 base36 字符（天然不含 `/` `\` `:` 等路径危险字符）
+ *  ② 与现有 id 集合不冲突（冲突就重 roll）
+ */
+export function newNoteId(existing: Set<string>): string {
+  let id: string = '';
+  let attempt: number = 0;
+  do {
+    const salt: number = Math.floor(Math.random() * 1000000000);
+    id = Date.now().toString(36) + salt.toString(36);
+    attempt++;
+  } while (existing.has(id) && attempt < 100);
+  return id;
+}
+
+/**
+ * id 是否"能安全当文件名用"（纯逻辑，可单测）
+ *
+ * ⚠️ 校验的边界是**路径安全**，不是"是不是新版格式"：
+ * 迁移时老条目的 id 就是日期串 `2026-09-30`（含连字符），它必须算合法 ——
+ * 否则老数据在迁移中会被当成脏数据丢掉（离线日记丢不起）。
+ * 所以这里拦的只有：空 / 超长 / `..` 路径穿越 / 非 [0-9a-z-_] 字符（路径分隔符等）。
+ */
+export function isValidNoteId(id: string): boolean {
+  if (typeof id !== 'string' || id.length === 0 || id.length > 64) {
+    return false;
+  }
+  if (id === '.' || id === '..') {
+    return false;
+  }
+  for (let i: number = 0; i < id.length; i++) {
+    const c: string = id.charAt(i);
+    const ok: boolean = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || c === '-' || c === '_';
+    if (!ok) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /** 补零：1 → '01' */
@@ -174,15 +243,133 @@ function shiftedDateKey(year: number, month: number, dayNum: number): string {
 
 // ── 搜索（Phase 6 的纯逻辑部分）────────────────────────────────────────
 export interface SearchHit {
+  /** 《N2》：命中条目的 id —— 点结果要能精确打开"那篇"，而不是那天的默认一篇 */
+  id: string;
   date: string;
   /** 命中位置附近的一段正文（给用户看"为什么命中"） */
   snippet: string;
 }
 
-/** 搜索输入：一篇日记的日期 + 纯文本 */
+/** 搜索输入：一篇日记的 id + 日期 + 纯文本 */
 export interface NoteText {
+  id: string;
   date: string;
   text: string;
+}
+
+// ── 回头看（Phase 10b：那年今日 + 时光时间轴）—— 纯逻辑，全部带单测 ──────────
+
+/**
+ * 「那年今日」：取出与 today **同月同日**的、过去的日期键（倒序，不含今天）。
+ *
+ * ⚠️ 闰日 `02-29` 只在历史闰年命中，**不降级到 `02-28`** ——
+ * 用户的心智是"这一天的往年"，不是"月底附近"，降级会给人看错的错觉。
+ */
+export function onThisDayDates(dates: string[], today: string): string[] {
+  if (!isValidDateKey(today)) {
+    return [];
+  }
+  const md: string = today.substring(5);
+  const out: string[] = [];
+  for (let i: number = 0; i < dates.length; i++) {
+    const d: string = dates[i];
+    if (!isValidDateKey(d)) {
+      continue;
+    }
+    if (d === today) {
+      continue;
+    }
+    if (d >= today) {
+      continue; // 只看过去（"未来的自己"留给以后）
+    }
+    if (d.substring(5) !== md) {
+      continue;
+    }
+    out.push(d);
+  }
+  out.sort((a: string, b: string) => a < b ? 1 : (a > b ? -1 : 0));
+  return out;
+}
+
+/** `N 年前`（MM-DD 已相同 ⇒ 年份差即精确年数）；入参不合法返回空串 */
+export function yearsAgoLabel(past: string, today: string): string {
+  if (!isValidDateKey(past) || !isValidDateKey(today)) {
+    return '';
+  }
+  if (past >= today) {
+    return '';
+  }
+  const diff: number = Number(today.substring(0, 4)) - Number(past.substring(0, 4));
+  return diff > 0 ? diff + ' 年前' : '';
+}
+
+/** 时间轴的一行：要么是年月标题，要么是一篇日记 */
+export interface TimelineRow {
+  /** 'header' | 'note' */
+  kind: string;
+  /** 稳定唯一 key（标题 'h:'+monthKey，日记 'n:'+id）—— LazyForEach 强依赖它 */
+  key: string;
+  /** 所属月份 '2026-09' */
+  monthKey: string;
+  /** kind==='note' 时有值；标题行为 null */
+  meta: NoteMeta | null;
+  /** 这一天是否多篇 ⇒ 行内要不要补显示 HH:mm，否则同日多篇看着会重复 */
+  showTime: boolean;
+}
+
+/**
+ * 把日记列表压成"扁平"时间轴行（月份变化处插入标题行）。
+ *
+ * ⚠️ 前置：metas 必须是 `store.list()` 的顺序（date↓, createdAt↓），本函数不排序 ——
+ *    排序是索引的职责，重复排两处容易不一致。
+ */
+export function timelineRows(metas: NoteMeta[]): TimelineRow[] {
+  const perDay: Map<string, number> = new Map<string, number>();
+  for (let i: number = 0; i < metas.length; i++) {
+    const key: string = metas[i].date;
+    const cur: number | undefined = perDay.get(key);
+    perDay.set(key, cur === undefined ? 1 : cur + 1);
+  }
+  const rows: TimelineRow[] = [];
+  let lastMonth: string = '';
+  for (let i: number = 0; i < metas.length; i++) {
+    const m: NoteMeta = metas[i];
+    const mk: string = monthOf(m.date);
+    if (mk !== lastMonth) {
+      const header: TimelineRow = { kind: 'header', key: 'h:' + mk, monthKey: mk, meta: null, showTime: false };
+      rows.push(header);
+      lastMonth = mk;
+    }
+    const n: number | undefined = perDay.get(m.date);
+    const many: boolean = n !== undefined && n > 1;
+    const row: TimelineRow = { kind: 'note', key: 'n:' + m.id, monthKey: mk, meta: m, showTime: many };
+    rows.push(row);
+  }
+  return rows;
+}
+
+/** 摘要：折叠空白 → 按**字符**截断 → 超长补 `…`（emoji 安全） */
+export function previewText(text: string, maxChars: number): string {
+  if (maxChars <= 0) {
+    return '';
+  }
+  const folded: string = text.replace(/\s+/g, ' ').trim();
+  const chars: string[] = Array.from(folded);
+  if (chars.length <= maxChars) {
+    return folded;
+  }
+  return chars.slice(0, maxChars).join('') + '…';
+}
+
+/** 时间戳 → `HH:mm`（同日多篇时用来区分） */
+export function timeOfDay(ts: number): string {
+  if (!Number.isFinite(ts) || ts <= 0) {
+    return '';
+  }
+  const d: Date = new Date(ts);
+  const hh: number = d.getHours();
+  const mm: number = d.getMinutes();
+  return (hh < 10 ? '0' + hh : '' + hh) + ':' + (mm < 10 ? '0' + mm : '' + mm);
 }
 
 /**
@@ -215,7 +402,7 @@ export function searchNotes(texts: NoteText[], query: string): SearchHit[] {
     if (to < chars.length) {
       snippet = snippet + '…';
     }
-    const hit: SearchHit = { date: item.date, snippet: snippet };
+    const hit: SearchHit = { id: item.id, date: item.date, snippet: snippet };
     hits.push(hit);
   }
   return hits;

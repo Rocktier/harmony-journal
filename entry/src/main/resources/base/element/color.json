@@ -35,6 +35,10 @@
     {
       "name": "rj_g100",
       "value": "#1A1A1A"
+    },
+    {
+      "name": "rj_accent",
+      "value": "#3DBB9B"
     }
   ]
 }

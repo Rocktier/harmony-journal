@@ -1,20 +1,50 @@
 import { common } from '@kit.AbilityKit';
+import { fileUri } from '@kit.CoreFileKit';
 import { router } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 import { DEV_SHOW_BADGE } from '../common/DevFlags';
-import { NoteMeta, MonthCell, NoteText, SearchHit, moodById, monthGrid, monthOf, searchNotes, shiftMonth, todayKey } from '../data/NoteMeta';
+import { TimelineDataSource } from '../common/TimelineDataSource';
+import { ImageStore } from '../data/ImageStore';
+import {
+  MonthCell, NoteMeta, NoteText, SearchHit, TimelineRow, moodById, monthGrid, monthOf,
+  onThisDayDates, previewText, searchNotes, shiftMonth, timeOfDay, timelineRows, todayKey, yearsAgoLabel
+} from '../data/NoteMeta';
 import { NoteStore } from '../data/NoteStore';
 import { getStore } from '../data/NoteStoreHolder';
 
 /**
- * 主页面：月视图日历 + 日记列表 + 搜索
+ * 主页面：月视图日历 + 时光时间轴 + 搜索 + 「那年今日」
  *
  * 家族观感：纯黑底、白字、红点做"有日记"的标记（与图标红点同源）。
- * 一天一篇 —— 点任意一天直接进入那天的编辑页（没有就是新建）。
+ *
+ * ⚠️ Phase 10b（回头看）的用户视角：
+ *   写完之后内容大概率再也不会被打开 —— 所以主页要**让过去自己出现**：
+ *   ① 那年今日：今天打开就有往年同日的内容撞进来
+ *   ② 时光时间轴：能看到"自己写过的话"（摘要缓存进索引，零额外 IO）+ 照片缩略图
+ *   —— 光有日期和字数的列表是张表，不是隧道。
  */
 const DOMAIN: number = 0x0000;
 const TAG: string = 'RockJournal';
+/** 那年今日最多展示几条（超出就截断，避免把主页挤成回忆录） */
+const RECALL_MAX: number = 3;
+/** 卡片里摘要的字数（比索引里的 42 稍短，卡片空间有限） */
+const RECALL_PREVIEW_LEN: number = 40;
+
+/** 传给编辑器的参数：带 id 就精确打开那篇；没有就按 date 取这天最新的一篇 */
+interface EntryParamPayload {
+  date: string;
+  id: string;
+}
+
+/** 「那年今日」的一张卡片（预先算好，渲染时不再做任何 IO） */
+interface RecallCard {
+  meta: NoteMeta;
+  /** `3 年前` */
+  years: string;
+  /** 摘要（老数据没有缓存 ⇒ 这里回退到解密取，但最多 RECALL_MAX 条，成本封顶） */
+  preview: string;
+}
 
 @Entry
 @Component
@@ -25,9 +55,17 @@ struct Index {
   @State private query: string = '';
   @State private hits: SearchHit[] = [];
   @State private loaded: boolean = false;
+  @State private recall: RecallCard[] = [];
   private store: NoteStore = getStore();
+  private images: ImageStore = new ImageStore();
+  /** 时间轴的惰性数据源（换数据必须 reload 才会重画） */
+  private dataSource: TimelineDataSource = new TimelineDataSource();
+  /** 缩略图缓存：ref → 可显示的 uri（解密+落临时文件很贵，一会话内只做一次） */
+  private thumbCache: Map<string, string> = new Map<string, string>();
 
   aboutToAppear(): void {
+    const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    this.images.open(ctx.filesDir);
     this.reload();
   }
 
@@ -42,15 +80,84 @@ struct Index {
   private reload(): void {
     this.metas = this.store.list();
     this.loaded = true;
-    hilog.info(DOMAIN, TAG, 'index loaded: %{public}d notes', this.metas.length);
+    // 时间轴：换数据必须走 reload（内部会 onDataReloaded），否则界面不重画
+    this.dataSource.reload(timelineRows(this.metas));
+    this.buildRecall();
+    hilog.info(DOMAIN, TAG, 'index loaded: %{public}d notes, recall %{public}d', this.metas.length, this.recall.length);
+  }
+
+  /** 「那年今日」：把往年同日的日记预先算成卡片（渲染时零 IO） */
+  private buildRecall(): void {
+    const today: string = todayKey();
+    const dates: string[] = onThisDayDates(this.store.allDates(), today);
+    const cards: RecallCard[] = [];
+    for (let i: number = 0; i < dates.length && cards.length < RECALL_MAX; i++) {
+      const list: NoteMeta[] = this.store.entriesOfDate(dates[i]);
+      for (let j: number = 0; j < list.length && cards.length < RECALL_MAX; j++) {
+        const m: NoteMeta = list[j];
+        // 老数据没缓存摘要 ⇒ 解密补一次（上限 RECALL_MAX 条，成本封顶）
+        const text: string = m.preview.length > 0 ? m.preview : previewText(this.store.textOf(m.id), RECALL_PREVIEW_LEN);
+        const card: RecallCard = { meta: m, years: yearsAgoLabel(m.date, today), preview: text };
+        cards.push(card);
+      }
+    }
+    this.recall = cards;
+  }
+
+  /**
+   * 缩略图：解密 → 临时文件 → `getUriFromPath`
+   * ⚠️ findings §8 的血坑：直接把路径给 Image 会**渲染空白**，必须过 `fileUri`。
+   */
+  private thumbOf(meta: NoteMeta): string {
+    if (meta.imgRef.length === 0) {
+      return '';
+    }
+    const hit: string | undefined = this.thumbCache.get(meta.imgRef);
+    if (hit !== undefined) {
+      return hit;
+    }
+    const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    const path: string = this.images.load(meta.imgRef, this.store.getVault(), ctx.cacheDir);
+    const uri: string = path.length > 0 ? fileUri.getUriFromPath(path) : '';
+    this.thumbCache.set(meta.imgRef, uri);
+    return uri;
   }
 
   private cells(): MonthCell[] {
     return monthGrid(this.monthKey, this.store.allDates());
   }
 
-  private open(date: string): void {
-    router.pushUrl({ url: 'pages/Editor', params: { date: date } }).catch((e: Error) => {
+  /**
+   * 月视图下方的列表 —— **只显示当前所选月份**。
+   *
+   * ⚠️ N1 的取舍（按第一性原则，不是观感洁癖）：
+   *  ① **一致性**：日历和列表共享顶部那对 `‹ 月份 ›`，范围就必须一致 ——
+   *     否则"翻到九月但列表还是全部历史"是两个窗格在打架，用户的"我在哪"会崩。
+   *  ② **去重**：10b 之后"全部历史倒序"已由**时光时间轴**专职负责（还带摘要和缩略图），
+   *     月视图里再放一份全量列表 = 同一需求两份更差的实现。
+   *  ③ 复用 `timelineRows` 只取 note 行 ⇒ `showTime` 的判断与时间轴完全同源（同日多篇才补 HH:mm）。
+   */
+  private monthRows(): TimelineRow[] {
+    const inMonth: NoteMeta[] = [];
+    for (let i: number = 0; i < this.metas.length; i++) {
+      if (monthOf(this.metas[i].date) === this.monthKey) {
+        inMonth.push(this.metas[i]);
+      }
+    }
+    const rows: TimelineRow[] = timelineRows(inMonth);
+    const notes: TimelineRow[] = [];
+    for (let i: number = 0; i < rows.length; i++) {
+      if (rows[i].kind === 'note') {
+        notes.push(rows[i]);
+      }
+    }
+    return notes;
+  }
+
+  /** 打开一篇：`id` 有值就精确打开那篇（搜索结果），否则交给编辑器按 date 取这天最新的一篇 */
+  private open(date: string, id: string = ''): void {
+    const payload: EntryParamPayload = { date: date, id: id };
+    router.pushUrl({ url: 'pages/Editor', params: payload }).catch((e: Error) => {
       hilog.error(DOMAIN, TAG, 'pushUrl failed: %{public}s', JSON.stringify(e));
     });
   }
@@ -60,8 +167,9 @@ struct Index {
     for (let i: number = 0; i < this.metas.length; i++) {
       const m: NoteMeta = this.metas[i];
       const item: NoteText = {
+        id: m.id,
         date: m.date,
-        text: this.store.readNote(m.date).map((b) => b.spans.map((s) => s.text).join('')).join('\n')
+        text: this.store.textOf(m.id)
       };
       texts.push(item);
     }
@@ -98,13 +206,13 @@ struct Index {
             .margin({ left: 8 })
         }
         Blank()
-        Text(this.mode === 'month' ? '月' : '列表')
+        Text(this.mode === 'month' ? '月' : '时光')
           .fontSize(10)
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_text3'))
           .margin({ right: 14 })
           .onClick(() => {
-            this.mode = this.mode === 'month' ? 'list' : 'month';
+            this.mode = this.mode === 'month' ? 'timeline' : 'month';
           })
         // 设置（导出备份的生命线入口 —— 藏深了等于没有）
         Text('设置')
@@ -135,6 +243,58 @@ struct Index {
           }
         })
 
+      // 那年今日：搜索时不打扰；没有往年内容就**完全不渲染**（不留空壳）
+      if (this.query.length === 0 && this.recall.length > 0) {
+        Column() {
+          Text('那年今日')
+            .fontSize(10)
+            .fontFamily('monospace')
+            .fontColor($r('app.color.rj_text3'))
+            .width('100%')
+            .padding({ bottom: 6 })
+          ForEach(this.recall, (card: RecallCard) => {
+            Row() {
+              Column() {
+                Row() {
+                  Text(card.years)
+                    .fontSize(10)
+                    .fontFamily('monospace')
+                    .fontColor($r('app.color.rj_red'))
+                  Text(card.meta.date)
+                    .fontSize(10)
+                    .fontFamily('monospace')
+                    .fontColor($r('app.color.rj_text3'))
+                    .margin({ left: 8 })
+                  if (this.moodEmoji(card.meta).length > 0) {
+                    Text(this.moodEmoji(card.meta))
+                      .fontSize(12)
+                      .margin({ left: 8 })
+                  }
+                }
+                if (card.preview.length > 0) {
+                  Text(card.preview)
+                    .fontSize(13)
+                    .fontColor($r('app.color.rj_text'))
+                    .margin({ top: 3 })
+                    .maxLines(2)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                }
+              }
+              .alignItems(HorizontalAlign.Start)
+              .layoutWeight(1)
+            }
+            .width('100%')
+            .padding({ top: 8, bottom: 8 })
+            .onClick(() => {
+              this.open(card.meta.date, card.meta.id);
+            })
+          }, (card: RecallCard) => card.meta.id)
+        }
+        .width('100%')
+        .padding({ left: 20, right: 20, top: 4, bottom: 10 })
+        .border({ width: { bottom: 1 }, color: $r('app.color.rj_line') })
+      }
+
       if (this.query.length > 0) {
         // 搜索结果
         if (this.hits.length === 0) {
@@ -163,7 +323,7 @@ struct Index {
               .width('100%')
             }
             .onClick(() => {
-              this.open(hit.date);
+              this.open(hit.date, hit.id);
             })
           }, (hit: SearchHit) => hit.date)
         }
@@ -222,38 +382,65 @@ struct Index {
         .height(300)
         .padding({ left: 16, right: 16 })
 
-        // 本月日记列表
+        // 本月日记列表（**只列这个月** —— 顶部月份导航与列表范围必须一致，见 monthRows）
+        if (this.monthRows().length === 0) {
+          Text('这个月还没有日记')
+            .fontSize(12)
+            .fontColor($r('app.color.rj_text3'))
+            .margin({ top: 24 })
+        }
         List() {
-          ForEach(this.metas, (m: NoteMeta) => {
+          ForEach(this.monthRows(), (row: TimelineRow) => {
             ListItem() {
-              Row() {
-                Text(m.date)
-                  .fontSize(12)
-                  .fontFamily('monospace')
-                  .fontColor($r('app.color.rj_text2'))
-                if (this.moodEmoji(m).length > 0) {
-                  Text(this.moodEmoji(m))
-                    .fontSize(14)
-                    .margin({ left: 10 })
+              Column() {
+                Row() {
+                  Text(row.meta !== null ? row.meta.date : '')
+                    .fontSize(12)
+                    .fontFamily('monospace')
+                    .fontColor($r('app.color.rj_text2'))
+                  if (row.showTime && row.meta !== null) {
+                    Text(timeOfDay(row.meta.createdAt))
+                      .fontSize(10)
+                      .fontFamily('monospace')
+                      .fontColor($r('app.color.rj_text3'))
+                      .margin({ left: 8 })
+                  }
+                  if (row.meta !== null && this.moodEmoji(row.meta).length > 0) {
+                    Text(this.moodEmoji(row.meta))
+                      .fontSize(14)
+                      .margin({ left: 10 })
+                  }
+                  Blank()
+                  Text(row.meta !== null ? row.meta.words + ' 字' : '')
+                    .fontSize(10)
+                    .fontFamily('monospace')
+                    .fontColor($r('app.color.rj_text3'))
                 }
-                Blank()
-                Text(m.words + ' 字')
-                  .fontSize(10)
-                  .fontFamily('monospace')
-                  .fontColor($r('app.color.rj_text3'))
+                .width('100%')
+                // 摘要来自索引缓存 ⇒ 零额外 IO，月视图也能"看到自己写过的话"
+                if (row.meta !== null && row.meta.preview.length > 0) {
+                  Text(row.meta.preview)
+                    .fontSize(13)
+                    .fontColor($r('app.color.rj_text'))
+                    .margin({ top: 4 })
+                    .maxLines(2)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                }
               }
-              .width('100%')
+              .alignItems(HorizontalAlign.Start)
               .padding({ left: 20, right: 20, top: 12, bottom: 12 })
             }
             .onClick(() => {
-              this.open(m.date);
+              if (row.meta !== null) {
+                this.open(row.meta.date, row.meta.id);
+              }
             })
-          }, (m: NoteMeta) => m.date)
+          }, (row: TimelineRow) => row.key)
         }
         .layoutWeight(1)
         .divider({ strokeWidth: 1, color: $r('app.color.rj_line') })
       } else {
-        // 列表视图（全部，倒序）
+        // 时光时间轴（全部，按年月分块，倒序）
         if (!this.loaded || this.metas.length === 0) {
           Column() {
             Text('还没有日记')
@@ -266,34 +453,78 @@ struct Index {
           }
           .margin({ top: 60 })
         }
+        // ⚠️ 铁律①：长列表必须 LazyForEach（只构建可见区域），且换数据要走 dataSource.reload
         List() {
-          ForEach(this.metas, (m: NoteMeta) => {
+          LazyForEach(this.dataSource, (row: TimelineRow) => {
             ListItem() {
-              Column() {
+              if (row.kind === 'header') {
+                Text(row.monthKey)
+                  .fontSize(10)
+                  .fontFamily('monospace')
+                  .fontColor($r('app.color.rj_text3'))
+                  .width('100%')
+                  .padding({ top: 14, bottom: 6 })
+              } else if (row.meta !== null) {
                 Row() {
-                  Text(m.date)
-                    .fontSize(12)
-                    .fontFamily('monospace')
-                    .fontColor($r('app.color.rj_text2'))
-                  if (this.moodEmoji(m).length > 0) {
-                    Text(this.moodEmoji(m))
-                      .fontSize(14)
+                  Column() {
+                    Row() {
+                      Text(row.meta.date)
+                        .fontSize(12)
+                        .fontFamily('monospace')
+                        .fontColor($r('app.color.rj_text2'))
+                      // 同一天多篇时补个时间，否则几行日期一模一样、看不出是几篇
+                      if (row.showTime) {
+                        Text(timeOfDay(row.meta.createdAt))
+                          .fontSize(10)
+                          .fontFamily('monospace')
+                          .fontColor($r('app.color.rj_text3'))
+                          .margin({ left: 8 })
+                      }
+                      if (this.moodEmoji(row.meta).length > 0) {
+                        Text(this.moodEmoji(row.meta))
+                          .fontSize(13)
+                          .margin({ left: 8 })
+                      }
+                      Blank()
+                      Text(row.meta.words + ' 字')
+                        .fontSize(10)
+                        .fontFamily('monospace')
+                        .fontColor($r('app.color.rj_text3'))
+                    }
+                    .width('100%')
+                    // 摘要来自索引缓存（零额外 IO）；老数据没有 ⇒ 这一行就没有，不硬凑
+                    if (row.meta.preview.length > 0) {
+                      Text(row.meta.preview)
+                        .fontSize(13)
+                        .fontColor($r('app.color.rj_text'))
+                        .margin({ top: 4 })
+                        .maxLines(2)
+                        .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    }
+                  }
+                  .alignItems(HorizontalAlign.Start)
+                  .layoutWeight(1)
+                  // 二次调用走缓存，很便宜；这里多判一次是为了解密失败时不留空白方块
+                  if (row.meta.imgRef.length > 0 && this.thumbOf(row.meta).length > 0) {
+                    Image(this.thumbOf(row.meta))
+                      .width(48)
+                      .height(48)
+                      .objectFit(ImageFit.Cover)
+                      .borderRadius(2)
                       .margin({ left: 10 })
                   }
-                  Blank()
-                  Text(m.words + ' 字')
-                    .fontSize(10)
-                    .fontFamily('monospace')
-                    .fontColor($r('app.color.rj_text3'))
                 }
                 .width('100%')
+                .padding({ top: 12, bottom: 12 })
               }
-              .padding({ left: 20, right: 20, top: 14, bottom: 14 })
             }
+            .padding({ left: 20, right: 20 })
             .onClick(() => {
-              this.open(m.date);
+              if (row.meta !== null) {
+                this.open(row.meta.date, row.meta.id);
+              }
             })
-          }, (m: NoteMeta) => m.date)
+          }, (row: TimelineRow) => row.key)
         }
         .layoutWeight(1)
         .divider({ strokeWidth: 1, color: $r('app.color.rj_line') })

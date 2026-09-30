@@ -4,3 +4,4 @@ import './vaultframe.test.ts';
 import './notemeta.test.ts';
 import './notebridge.test.ts';
 import './backup.test.ts';
+import './indexcodec.test.ts';

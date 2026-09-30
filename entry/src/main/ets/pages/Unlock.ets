@@ -1,19 +1,19 @@
 import { router } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
-import { unlockWith, isFirstRun } from '../data/NoteStoreHolder';
-import { ensureBioKey, tryBioUnlock } from '../common/BioUnlock';
+import { unlockWith, setupVault, unlockWithBiometric, hasBiometric, isFirstRun } from '../data/NoteStoreHolder';
 
 /**
  * 解锁页（Phase 8 / 决策 4）：替代开发期 DEV_UNLOCK_BYPASS。
  *
  * 流程：
- *  - 启动 → EntryAbility.bootstrap 已备好 salt → 进本页
- *  - 首次运行：让用户「设置主密码」（≥6 位，两次一致）→ 派生主密钥 + 落 salt
- *  - 之后运行：输入主密码解锁
- *  - 优先尝试生物（HUKS 绑生物）→ 通过即放行；无生物/失败降级主密码
+ *  - 启动 → EntryAbility.bootstrap 已备好 salt + 沙箱根 → 进本页
+ *  - 首次运行：让用户「设置主密码」（≥6 位，两次一致）→ 生成随机主密钥 + 写两份备份（密码 + 生物）
+ *  - 之后运行：优先显示「使用指纹/面容解锁」；生物通过直接进应用，无需再输密码
+ *  - 生物不可用/失败/取消 → 降级主密码（永远能解锁）
  *
- * ⚠️ 主密钥 = PBKDF2(密码, 固定 salt)，只存内存；忘密码 = 无法派生 = 数据不可恢复。
+ * ⚠️ 主密钥随机生成、只存内存；密码与生物各存一份备份互为兜底。忘密码 ≠ 丢数据（可用生物）。
+ * ⚠️ 模拟器 / 无生物设备：生物路径会失败并自动降级主密码，不会卡在解锁页。
  */
 const DOMAIN: number = 0x0000;
 const TAG: string = 'RockJournal';
@@ -24,20 +24,27 @@ struct Unlock {
   @State private password: string = '';
   @State private confirm: string = '';
   @State private error: string = '';
-  @State private bioMsg: string = '';
   @State private firstRun: boolean = isFirstRun();
+  @State private bioAvailable: boolean = false;
 
   aboutToAppear(): void {
-    ensureBioKey();
-    this.attemptBio();
+    if (!this.firstRun) {
+      hasBiometric().then((ok: boolean) => {
+        this.bioAvailable = ok;
+      }).catch(() => {
+        this.bioAvailable = false;
+      });
+    }
   }
 
-  private async attemptBio(): Promise<void> {
-    const ok: boolean = await tryBioUnlock();
+  private async doBio(): Promise<void> {
+    const ok: boolean = await unlockWithBiometric();
     if (ok) {
-      // 真机：生物通过 → 此处应解封主密钥到内存（HUKS 主密钥保管专项，待实现）。
-      // 当前 HUKS 仅做认证层，主密钥仍需密码派生 → 提示用密码。
-      this.bioMsg = '生物已通过，请输入主密码解锁数据';
+      router.replaceUrl({ url: 'pages/Index' }).catch((e: Error) => {
+        hilog.error(DOMAIN, TAG, 'replaceUrl failed: %{public}s', JSON.stringify(e));
+      });
+    } else {
+      this.error = '生物解锁失败，请用主密码';
     }
   }
 
@@ -51,20 +58,30 @@ struct Unlock {
         this.error = '两次输入不一致';
         return;
       }
-    } else {
-      if (this.password.length === 0) {
-        this.error = '请输入主密码';
+      const ok: boolean = await setupVault(this.password);
+      if (!ok) {
+        this.error = '建库失败，请重试';
         return;
       }
+      this.goIndex();
+      return;
+    }
+    if (this.password.length === 0) {
+      this.error = '请输入主密码';
+      return;
     }
     const ok: boolean = await unlockWith(this.password);
     if (ok) {
-      router.replaceUrl({ url: 'pages/Index' }).catch((e: Error) => {
-        hilog.error(DOMAIN, TAG, 'replaceUrl failed: %{public}s', JSON.stringify(e));
-      });
+      this.goIndex();
     } else {
       this.error = '密码不正确，或数据已损坏/不兼容';
     }
+  }
+
+  private goIndex(): void {
+    router.replaceUrl({ url: 'pages/Index' }).catch((e: Error) => {
+      hilog.error(DOMAIN, TAG, 'replaceUrl failed: %{public}s', JSON.stringify(e));
+    });
   }
 
   build() {
@@ -107,7 +124,20 @@ struct Unlock {
           })
       }
 
-      Button(this.firstRun ? '设置并进入' : '解锁')
+      if (!this.firstRun && this.bioAvailable) {
+        Button('使用指纹 / 面容解锁')
+          .fontSize(15)
+          .backgroundColor($r('app.color.rj_accent'))
+          .fontColor($r('app.color.rj_bg'))
+          .width('80%')
+          .height(46)
+          .margin({ top: 8, bottom: 4 })
+          .onClick(() => {
+            this.doBio();
+          })
+      }
+
+      Button(this.firstRun ? '设置并进入' : '用主密码解锁')
         .fontSize(15)
         .backgroundColor($r('app.color.rj_text'))
         .fontColor($r('app.color.rj_bg'))
@@ -118,12 +148,6 @@ struct Unlock {
           this.doUnlock();
         })
 
-      if (this.bioMsg.length > 0) {
-        Text(this.bioMsg)
-          .fontSize(12)
-          .fontColor($r('app.color.rj_text3'))
-          .margin({ top: 16 })
-      }
       if (this.error.length > 0) {
         Text(this.error)
           .fontSize(12)
