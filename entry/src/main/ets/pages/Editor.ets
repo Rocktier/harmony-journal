@@ -142,6 +142,7 @@ struct Editor {
     try {
       const res: picker.PhotoSelectResult = await pv.select({ maxSelectNumber: 1 });
       if (res.photoUris.length === 0) {
+        hilog.warn(DOMAIN, TAG, 'pickImage: no photo selected (picker returned empty)');
         return;
       }
       // 照片 uri 直接打开；fs 没有 fstatSync，且 uri 未必能 statSync —— 用循环读到 EOF（查过 .d.ts）

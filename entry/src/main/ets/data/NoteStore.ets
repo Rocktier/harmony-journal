@@ -58,12 +58,20 @@ export class NoteStore {
     return this.root + '/' + NOTES_DIR + '/' + date + '.rkd';
   }
 
-  /** 读索引（文件不存在 = 全新用户，返回空列表而不是失败） */
-  loadIndex(): NoteMeta[] {
+  /**
+   * 读索引。
+   * @returns true  = 成功（含「文件不存在 = 全新用户/首次」这种正常空）；
+   *          false = 文件存在但**解密或解析失败**（密码错误 / 数据损坏 / 派生不兼容）。
+   *
+   * ⚠️ 关键：密码对不对不在 unlock 阶段验证（PBKDF2 永远能派生），
+   * 真正验证在解密索引时。所以解密失败必须向上报 false，
+   * 否则 unlockWith 会误判成功 → 静默进空主页，用户以为日记全没了。
+   */
+  loadIndex(): boolean {
     const p: string = this.indexPath();
     if (!fs.accessSync(p)) {
       this.index = [];
-      return this.index;
+      return true;
     }
     const file: fs.File = fs.openSync(p, fs.OpenMode.READ_ONLY);
     try {
@@ -71,22 +79,23 @@ export class NoteStore {
       fs.readSync(file.fd, buf);
       const plain: Uint8Array | null = this.vault.decrypt(new Uint8Array(buf));
       if (plain === null) {
-        hilog.error(DOMAIN, TAG, 'index decrypt failed');
+        hilog.error(DOMAIN, TAG, 'index decrypt failed (wrong password or corrupted data)');
         this.index = [];
-        return this.index;
+        return false;
       }
       const text: string = new util.TextDecoder().decodeToString(plain);
       const parsed: object = JSON.parse(text) as object;
       const holder: IndexHolder = parsed as IndexHolder;
       const list: NoteMeta[] = holder.items !== undefined ? holder.items : [];
       this.index = Array.isArray(list) ? list.filter((m: NoteMeta) => isValidDateKey(m.date)) : [];
+      return true;
     } catch (e) {
       hilog.error(DOMAIN, TAG, 'loadIndex failed: %{public}s', JSON.stringify(e));
       this.index = [];
+      return false;
     } finally {
       fs.closeSync(file);
     }
-    return this.index;
   }
 
   /** 写索引（整体重写：条目数 = 日记篇数，一年也就 365 条，代价可接受） */

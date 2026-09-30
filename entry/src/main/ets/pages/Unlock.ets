@@ -63,7 +63,7 @@ struct Unlock {
         hilog.error(DOMAIN, TAG, 'replaceUrl failed: %{public}s', JSON.stringify(e));
       });
     } else {
-      this.error = '密码错误';
+      this.error = '密码不正确，或数据已损坏/不兼容';
     }
   }
 

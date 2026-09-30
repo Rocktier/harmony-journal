@@ -78,7 +78,13 @@ export async function unlockWith(password: string): Promise<boolean> {
   if (!ok) {
     return false;
   }
-  getStore().loadIndex();
+  const idxOk: boolean = getStore().loadIndex();
+  if (!idxOk) {
+    // 密码派生了，但索引解不开：密码错 或 数据被别的密钥加密/损坏。
+    // 绝不能放行进空主页（用户会以为日记全没了），拦在解锁页报错。
+    hilog.error(DOMAIN, TAG, 'index load failed after unlock, abort (wrong password or corrupted data)');
+    return false;
+  }
   if (firstRun) {
     getStore().saveIndex();
     firstRun = false;
