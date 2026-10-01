@@ -7,8 +7,9 @@ import { DEV_SHOW_BADGE } from '../common/DevFlags';
 import { TimelineDataSource } from '../common/TimelineDataSource';
 import { ImageStore } from '../data/ImageStore';
 import {
-  MonthCell, NoteMeta, NoteText, SearchHit, TimelineRow, moodById, monthGrid, monthOf,
-  onThisDayDates, previewText, searchNotes, shiftMonth, timeOfDay, timelineRows, todayKey, yearsAgoLabel
+  JournalStats, MonthCell, NoteMeta, NoteText, SearchHit, TimelineRow, computeStats, moodById, monthGrid,
+  monthOf, onThisDayDates, previewText, searchNotes, shiftMonth, timeOfDay, timelineRows, todayKey,
+  yearsAgoLabel
 } from '../data/NoteMeta';
 import { NoteStore } from '../data/NoteStore';
 import { getStore } from '../data/NoteStoreHolder';
@@ -56,6 +57,9 @@ struct Index {
   @State private hits: SearchHit[] = [];
   @State private loaded: boolean = false;
   @State private recall: RecallCard[] = [];
+  @State private stats: JournalStats = {
+    total: 0, days: 0, words: 0, streak: 0, longest: 0, wroteToday: false
+  };
   private store: NoteStore = getStore();
   private images: ImageStore = new ImageStore();
   /** 时间轴的惰性数据源（换数据必须 reload 才会重画） */
@@ -82,6 +86,7 @@ struct Index {
     this.loaded = true;
     // 时间轴：换数据必须走 reload（内部会 onDataReloaded），否则界面不重画
     this.dataSource.reload(timelineRows(this.metas));
+    this.stats = computeStats(this.metas, todayKey());
     this.buildRecall();
     hilog.info(DOMAIN, TAG, 'index loaded: %{public}d notes, recall %{public}d', this.metas.length, this.recall.length);
   }
@@ -225,6 +230,30 @@ struct Index {
       }
       .width('100%')
       .padding({ left: 20, right: 20, top: 16, bottom: 8 })
+
+      // 坚持写：连续天数 + 今天写没写（今天还没写用红色，直接推动今天的动作）
+      Row() {
+        if (this.stats.streak > 0) {
+          Text('连续 ' + this.stats.streak + ' 天')
+            .fontSize(10)
+            .fontFamily('monospace')
+            .fontColor($r('app.color.rj_text3'))
+        }
+        Text('共 ' + this.stats.total + ' 篇')
+          .fontSize(10)
+          .fontFamily('monospace')
+          .fontColor($r('app.color.rj_text3'))
+          .margin({ left: 12 })
+        Blank()
+        if (!this.stats.wroteToday) {
+          Text('今天还没写')
+            .fontSize(10)
+            .fontFamily('monospace')
+            .fontColor($r('app.color.rj_red'))
+        }
+      }
+      .width('100%')
+      .padding({ left: 20, right: 20, bottom: 8 })
 
       // 搜索
       TextInput({ placeholder: '搜日记', text: this.query })

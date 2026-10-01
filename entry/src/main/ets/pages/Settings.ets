@@ -6,6 +6,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 
 import { APP_NAME_CN, APP_VERSION } from '../common/AppMeta';
 import { DEV_SHOW_BADGE } from '../common/DevFlags';
+import { JournalStats, computeStats, todayKey } from '../data/NoteMeta';
 import { getStore } from '../data/NoteStoreHolder';
 import {
   BackupItem, EXT_MD, EXT_TXT, backupFileName, buildBackup, parseBackup, readableFileName,
@@ -27,10 +28,14 @@ struct Settings {
   @State private noteCount: number = 0;
   @State private lastBackup: string = '从未';
   @State private toast: string = '';
+  @State private stats: JournalStats = {
+    total: 0, days: 0, words: 0, streak: 0, longest: 0, wroteToday: false
+  };
   private store = getStore();
 
   aboutToAppear(): void {
     this.noteCount = this.store.list().length;
+    this.stats = computeStats(this.store.list(), todayKey());
   }
 
   private async doExport(): Promise<void> {
@@ -238,6 +243,53 @@ struct Settings {
         .fontColor($r('app.color.rj_text3'))
         .width('100%')
         .padding({ left: 20, top: 4, bottom: 16 })
+
+      // 统计（Diarium 的 diary statistics 同款；全部从内存索引算，零 IO）
+      Text('统计')
+        .fontSize(10.5)
+        .fontFamily('monospace')
+        .fontColor($r('app.color.rj_text3'))
+        .width('100%')
+        .padding({ left: 20, bottom: 6 })
+
+      Row() {
+        Text('写过日记的天数')
+          .fontSize(14)
+          .fontColor($r('app.color.rj_text'))
+        Blank()
+        Text(this.stats.days + ' 天')
+          .fontSize(12)
+          .fontFamily('monospace')
+          .fontColor($r('app.color.rj_text3'))
+      }
+      .width('100%')
+      .padding({ left: 20, right: 20, top: 12, bottom: 12 })
+
+      Row() {
+        Text('累计字数')
+          .fontSize(14)
+          .fontColor($r('app.color.rj_text'))
+        Blank()
+        Text(this.stats.words + ' 字')
+          .fontSize(12)
+          .fontFamily('monospace')
+          .fontColor($r('app.color.rj_text3'))
+      }
+      .width('100%')
+      .padding({ left: 20, right: 20, top: 12, bottom: 12 })
+
+      Row() {
+        Text('最长连续')
+          .fontSize(14)
+          .fontColor($r('app.color.rj_text'))
+        Blank()
+        Text(this.stats.longest + ' 天')
+          .fontSize(12)
+          .fontFamily('monospace')
+          .fontColor($r('app.color.rj_text3'))
+      }
+      .width('100%')
+      .padding({ left: 20, right: 20, top: 12, bottom: 12 })
 
       // 关于
       Text('关于')

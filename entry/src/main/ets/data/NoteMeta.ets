@@ -361,6 +361,99 @@ export function previewText(text: string, maxChars: number): string {
   return chars.slice(0, maxChars).join('') + '…';
 }
 
+/** 前一天的日期键（跨月/跨年/闰年都要对）；入参不合法返回空串 */
+export function prevDateKey(key: string): string {
+  if (!isValidDateKey(key)) {
+    return '';
+  }
+  const y: number = Number(key.substring(0, 4));
+  const m: number = Number(key.substring(5, 7));
+  const d: number = Number(key.substring(8, 10));
+  if (d > 1) {
+    return key.substring(0, 8) + pad2(d - 1);
+  }
+  if (m > 1) {
+    const pm: number = m - 1;
+    return y + '-' + pad2(pm) + '-' + pad2(daysInMonth(y, pm));
+  }
+  return (y - 1) + '-12-31';
+}
+
+/** 写日记的统计（全部从内存里的索引算，零 IO） */
+export interface JournalStats {
+  /** 总篇数（一天多篇时按篇算） */
+  total: number;
+  /** 有日记的天数（去重 —— 一天 3 篇算 1 天） */
+  days: number;
+  /** 总字数 */
+  words: number;
+  /** 当前连续天数 */
+  streak: number;
+  /** 历史最长连续天数 */
+  longest: number;
+  /** 今天写没写 */
+  wroteToday: boolean;
+}
+
+/**
+ * 统计 + 连续天数（纯逻辑，可单测）
+ *
+ * ⚠️ 连续天数的判定（用户视角，两个关键点）：
+ *  ① **今天还没写时，连续天数仍然算活着** —— 从昨天往回数。
+ *     否则一到凌晨用户的"连续 30 天"就归零，那是惩罚不是激励。
+ *     是否断在今天，由 `wroteToday` 单独表达（界面上再提示"今天还没写"）。
+ *  ② 昨天也没写 ⇒ 链已经断了 ⇒ 连续 = 0（不粉饰）。
+ */
+export function computeStats(metas: NoteMeta[], today: string): JournalStats {
+  const seen: Set<string> = new Set<string>();
+  let words: number = 0;
+  for (let i: number = 0; i < metas.length; i++) {
+    seen.add(metas[i].date);
+    words = words + metas[i].words;
+  }
+  const dates: string[] = [];
+  seen.forEach((d: string) => {
+    if (isValidDateKey(d)) {
+      dates.push(d);
+    }
+  });
+  dates.sort((a: string, b: string) => a < b ? -1 : (a > b ? 1 : 0)); // 升序
+  const wroteToday: boolean = isValidDateKey(today) && seen.has(today);
+  const empty: JournalStats = { total: metas.length, days: dates.length, words: words, streak: 0, longest: 0, wroteToday: wroteToday };
+  if (dates.length === 0 || !isValidDateKey(today)) {
+    return empty;
+  }
+  // 历史最长连续（正着扫一遍）
+  let longest: number = 1;
+  let run: number = 1;
+  for (let i: number = 1; i < dates.length; i++) {
+    if (prevDateKey(dates[i]) === dates[i - 1]) {
+      run = run + 1;
+    } else {
+      run = 1;
+    }
+    if (run > longest) {
+      longest = run;
+    }
+  }
+  // 当前连续：锚点 = 今天（写了）或昨天（没写但链还活着）
+  const anchor: string = wroteToday ? today : prevDateKey(today);
+  if (anchor.length === 0 || !seen.has(anchor)) {
+    return { total: metas.length, days: dates.length, words: words, streak: 0, longest: longest, wroteToday: wroteToday };
+  }
+  let streak: number = 0;
+  let cursor: string = anchor;
+  while (seen.has(cursor)) {
+    streak = streak + 1;
+    const prev: string = prevDateKey(cursor);
+    if (prev.length === 0) {
+      break;
+    }
+    cursor = prev;
+  }
+  return { total: metas.length, days: dates.length, words: words, streak: streak, longest: longest, wroteToday: wroteToday };
+}
+
 /** 时间戳 → `HH:mm`（同日多篇时用来区分） */
 export function timeOfDay(ts: number): string {
   if (!Number.isFinite(ts) || ts <= 0) {

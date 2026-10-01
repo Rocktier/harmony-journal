@@ -2,9 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  MonthCell, MOODS, NoteMeta, TimelineRow, daysInMonth, dateKeyOf, isValidDateKey, isValidNoteId, monthGrid,
-  monthOf, moodById, newNoteId, onThisDayDates, previewText, searchNotes, shiftMonth, timeOfDay,
-  timelineRows, todayKey, yearsAgoLabel
+  JournalStats, MonthCell, MOODS, NoteMeta, TimelineRow, computeStats, daysInMonth, dateKeyOf,
+  isValidDateKey, isValidNoteId, monthGrid, monthOf, moodById, newNoteId, onThisDayDates, previewText,
+  prevDateKey, searchNotes, shiftMonth, timeOfDay, timelineRows, todayKey, yearsAgoLabel
 } from '../entry/src/main/ets/data/NoteMeta';
 
 /** 造条目（只关心被测字段，其余走默认） */
@@ -139,6 +139,80 @@ test('N 年前：年份差即年数（MM-DD 已相同）；非法返回空串', 
   assert.equal(yearsAgoLabel('2026-09-30', '2026-09-30'), '');   // 同一天
   assert.equal(yearsAgoLabel('2027-09-30', '2026-09-30'), '');   // 未来
   assert.equal(yearsAgoLabel('不是日期', '2026-09-30'), '');
+});
+
+test('前一天：跨月 / 跨年 / 闰年都要对', () => {
+  assert.equal(prevDateKey('2026-09-30'), '2026-09-29');
+  assert.equal(prevDateKey('2026-09-01'), '2026-08-31');
+  assert.equal(prevDateKey('2026-01-01'), '2025-12-31');
+  assert.equal(prevDateKey('2024-03-01'), '2024-02-29');   // 闰年
+  assert.equal(prevDateKey('2026-03-01'), '2026-02-28');   // 平年
+  assert.equal(prevDateKey('不是日期'), '');
+});
+
+test('统计：连着写了 3 天（含今天）⇒ 连续 3', () => {
+  const metas: NoteMeta[] = [
+    entry('2026-10-02', 'c'), entry('2026-10-01', 'b'), entry('2026-09-30', 'a')
+  ];
+  const s: JournalStats = computeStats(metas, '2026-10-02');
+  assert.equal(s.streak, 3);
+  assert.equal(s.longest, 3);
+  assert.equal(s.days, 3);
+  assert.equal(s.total, 3);
+  assert.equal(s.wroteToday, true);
+});
+
+test('★ 统计：今天还没写 ⇒ 连续天数仍算活着（从昨天往回数），不能一到凌晨就归零', () => {
+  const metas: NoteMeta[] = [entry('2026-10-01', 'b'), entry('2026-09-30', 'a')];
+  const s: JournalStats = computeStats(metas, '2026-10-02');
+  assert.equal(s.wroteToday, false);   // 但链还在
+  assert.equal(s.streak, 2);           // ★ 不是 0，那是惩罚不是激励
+});
+
+test('统计：昨天也没写 ⇒ 链真断了，连续归零（不粉饰）', () => {
+  const metas: NoteMeta[] = [entry('2026-09-30', 'a'), entry('2026-09-29', 'b')];
+  const s: JournalStats = computeStats(metas, '2026-10-02');
+  assert.equal(s.wroteToday, false);
+  assert.equal(s.streak, 0);
+  assert.equal(s.longest, 2);          // 历史最长仍然记得
+});
+
+test('统计：最长连续是历史值，不因当前断链而消失', () => {
+  const metas: NoteMeta[] = [
+    entry('2026-10-02', 'z'),
+    entry('2026-05-03', 'c'), entry('2026-05-02', 'b'), entry('2026-05-01', 'a')
+  ];
+  const s: JournalStats = computeStats(metas, '2026-10-02');
+  assert.equal(s.streak, 1);
+  assert.equal(s.longest, 3);
+  assert.equal(s.days, 4);
+});
+
+test('统计：一天写 3 篇只算 1 天（连续天数按天不按篇）', () => {
+  const metas: NoteMeta[] = [
+    entry('2026-10-02', 'a1', 1), entry('2026-10-02', 'a2', 2), entry('2026-10-02', 'a3', 3)
+  ];
+  const s: JournalStats = computeStats(metas, '2026-10-02');
+  assert.equal(s.days, 1);      // ★ 按天
+  assert.equal(s.total, 3);     // 但篇数按篇
+  assert.equal(s.streak, 1);
+});
+
+test('统计：一篇都没有时不炸', () => {
+  const s: JournalStats = computeStats([], '2026-10-02');
+  assert.equal(s.total, 0);
+  assert.equal(s.days, 0);
+  assert.equal(s.streak, 0);
+  assert.equal(s.longest, 0);
+  assert.equal(s.wroteToday, false);
+});
+
+test('统计：字数累加（含同一天多篇）', () => {
+  const a: NoteMeta = entry('2026-10-02', 'a');
+  a.words = 120;
+  const b: NoteMeta = entry('2026-10-02', 'b');
+  b.words = 30;
+  assert.equal(computeStats([a, b], '2026-10-02').words, 150);
 });
 
 test('时间轴：月份变化处插入标题，首行必是标题', () => {
