@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { Block, Span } from '../entry/src/main/ets/data/NoteBlocks';
 import { NoteMeta } from '../entry/src/main/ets/data/NoteMeta';
 import {
-  BACKUP_VERSION, BackupItem, backupFileName, buildBackup, parseBackup, utf8Decode, utf8Encode
+  BACKUP_VERSION, BackupItem, EXT_MD, EXT_TXT, backupFileName, buildBackup, parseBackup,
+  readableFileName, toMarkdown, toPlainText, utf8Decode, utf8Encode
 } from '../entry/src/main/ets/data/BackupService';
 
 function span(text: string, bold: boolean = false, italic: boolean = false): Span {
@@ -82,6 +83,67 @@ test('导出的备份带 id（导入侧才能精确还原每一篇）', () => {
   const back: BackupItem[] = parseBackup(buildBackup([item('2026-09-30', '内容', 'xyz789')]));
   assert.equal(back[0].meta.id, 'xyz789');
   assert.equal(back[0].meta.words, '内容'.length);
+});
+
+test('可读导出 TXT：纯文字，标题/列表/图片都读得懂', () => {
+  const blocks: Block[] = [
+    { type: 'h', spans: [span('小标题')], ref: '' },
+    { type: 'p', spans: [span('正文一句')], ref: '' },
+    { type: 'li', spans: [span('一条列表')], ref: '' },
+    { type: 'img', spans: [], ref: 'img/xxx.enc' }
+  ];
+  const item: BackupItem = { date: '2026-10-01', blocks: blocks, meta: metaOf('2026-10-01', 'n1', 1, 4) };
+  const txt: string = toPlainText([item]);
+  assert.ok(txt.indexOf('2026-10-01') >= 0);
+  assert.ok(txt.indexOf('小标题') >= 0);
+  assert.ok(txt.indexOf('正文一句') >= 0);
+  assert.ok(txt.indexOf('· 一条列表') >= 0);
+  assert.ok(txt.indexOf('[图片]') >= 0);      // 图片不内联（外置是加密文件，别人读不懂）
+  assert.ok(txt.indexOf('**') < 0);          // 纯文本不该有 Markdown 记号
+});
+
+test('可读导出 Markdown：保留结构（## 标题 / - 列表 / **粗** *斜*）', () => {
+  const blocks: Block[] = [
+    { type: 'h', spans: [span('小标题', false, false)], ref: '' },
+    { type: 'li', spans: [span('列表项', false, false)], ref: '' },
+    { type: 'p', spans: [span('粗', true, false), span('斜', false, true)], ref: '' }
+  ];
+  const item: BackupItem = { date: '2026-10-01', blocks: blocks, meta: metaOf('2026-10-01', 'n2', 1, 3) };
+  const md: string = toMarkdown([item]);
+  assert.ok(md.indexOf('## 2026-10-01') >= 0);
+  assert.ok(md.indexOf('### 小标题') >= 0);
+  assert.ok(md.indexOf('- 列表项') >= 0);
+  assert.ok(md.indexOf('**粗**') >= 0);
+  assert.ok(md.indexOf('*斜*') >= 0);
+});
+
+test('可读导出：心情渲染成人话（emoji + 中文）', () => {
+  const item: BackupItem = {
+    date: '2026-10-01',
+    blocks: [{ type: 'p', spans: [span('内容')], ref: '' }],
+    meta: metaOf('2026-10-01', 'n3', 1, 2)
+  };
+  item.meta.mood = 'happy';
+  assert.ok(toPlainText([item]).indexOf('😄 开心') >= 0);
+  // 自定义心情用用户自己写的文案
+  item.meta.mood = 'custom';
+  item.meta.moodText = '有点累';
+  assert.ok(toPlainText([item]).indexOf('有点累') >= 0);
+});
+
+test('可读导出：一篇都没有时不炸，空篇也不产生空行噪音', () => {
+  assert.ok(toPlainText([]).indexOf('共 0 篇') >= 0);
+  assert.ok(toMarkdown([]).indexOf('共 0 篇') >= 0);
+  const empty: BackupItem = { date: '2026-10-01', blocks: [], meta: metaOf('2026-10-01', 'n4', 1, 0) };
+  const txt: string = toPlainText([empty]);
+  assert.ok(txt.indexOf('2026-10-01') >= 0);
+});
+
+test('可读导出文件名：和加密备份区分开，一眼看出是明文', () => {
+  assert.ok(readableFileName('2026-10-01', EXT_TXT).endsWith('.txt'));
+  assert.ok(readableFileName('2026-10-01', EXT_MD).endsWith('.md'));
+  assert.ok(readableFileName('2026-10-01', EXT_TXT).indexOf('可读导出') >= 0);
+  assert.ok(backupFileName('2026-10-01').indexOf('备份') >= 0);
 });
 
 test('meta 缺失/残缺时不炸：字段走默认值', () => {

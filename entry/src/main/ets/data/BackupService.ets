@@ -9,8 +9,8 @@
  * 备份是离线日记唯一的事后悔药（手机丢了/坏了/换机），
  * 所以格式宁可笨一点也要稳：一层 JSON + 一层加密，十年后仍能解释。
  */
-import { Block, jsonToBlocks, blocksToJson } from './NoteBlocks';
-import { NoteMeta, isValidDateKey, isValidNoteId } from './NoteMeta';
+import { Block, Span, jsonToBlocks, blocksToJson } from './NoteBlocks';
+import { NoteMeta, isValidDateKey, isValidNoteId, moodById } from './NoteMeta';
 
 export const BACKUP_APP: string = 'rockjournal';
 /**
@@ -23,6 +23,9 @@ export const BACKUP_APP: string = 'rockjournal';
 export const BACKUP_VERSION: number = 2;
 export const BACKUP_VERSION_MIN_READABLE: number = 1;
 export const BACKUP_EXT: string = '.rkdbak';
+/** 可读导出（明文）的扩展名 —— 见 `toPlainText` / `toMarkdown` */
+export const EXT_TXT: string = '.txt';
+export const EXT_MD: string = '.md';
 
 export interface BackupItem {
   date: string;
@@ -33,6 +36,104 @@ export interface BackupItem {
 /** 备份文件名（带日期，用户一眼知道是哪天的备份） */
 export function backupFileName(dateKey: string): string {
   return 'Rock私记-备份-' + dateKey + BACKUP_EXT;
+}
+
+/** 可读导出的文件名（明文，名字里就写明"可读"，免得用户和加密备份搞混） */
+export function readableFileName(dateKey: string, ext: string): string {
+  return 'Rock私记-可读导出-' + dateKey + ext;
+}
+
+/**
+ * 可读导出：**明文**文本（TXT / Markdown）
+ *
+ * ⚠️ 为什么要有它（用户视角）：
+ *   加密备份 `.rkdbak` 只有本 App 能读 —— 用户想迁移到别的日记软件、或只是想打印/存档，
+ *   就**拿不出来**，等于被锁死。一个标榜"数据永远属于你"的隐私应用不该这样。
+ *   所以这里导出**明文**，代价是文件不加密 —— 因此设置页必须明确提示用户自行保管。
+ *
+ * 两者区别：TXT 纯文字（最通用）；Markdown 保留标题/列表/粗斜体结构（可再导入别的编辑器）。
+ * ⚠️ 图片不内联（正文里存的是加密文件引用，外部软件也读不懂）⇒ 只留 `[图片]` 占位。
+ */
+export function toPlainText(items: BackupItem[]): string {
+  return renderReadable(items, false);
+}
+
+export function toMarkdown(items: BackupItem[]): string {
+  return renderReadable(items, true);
+}
+
+function renderReadable(items: BackupItem[], markdown: boolean): string {
+  const lines: string[] = [];
+  lines.push('Rock私记 · 可读导出');
+  lines.push('');
+  lines.push('共 ' + items.length + ' 篇');
+  lines.push('');
+  for (let i: number = 0; i < items.length; i++) {
+    const it: BackupItem = items[i];
+    lines.push(markdown ? '## ' + it.date : '── ' + it.date + ' ──');
+    const mood: string = moodLabelOf(it.meta);
+    if (mood.length > 0) {
+      lines.push(markdown ? '> 心情：' + mood : '心情：' + mood);
+    }
+    pushBlocks(lines, it.blocks, markdown);
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+
+/** 块 → 文本行（两种模式共用，只在标题/列表/样式的记号上不同） */
+function pushBlocks(lines: string[], blocks: Block[], markdown: boolean): void {
+  for (let i: number = 0; i < blocks.length; i++) {
+    const b: Block = blocks[i];
+    if (b.type === 'img') {
+      lines.push('[图片]');
+      continue;
+    }
+    const text: string = spansToText(b.spans, markdown);
+    if (text.length === 0) {
+      continue;
+    }
+    if (b.type === 'h') {
+      lines.push(markdown ? '### ' + text : text);
+    } else if (b.type === 'li') {
+      lines.push(markdown ? '- ' + text : '· ' + text);
+    } else {
+      lines.push(text);
+    }
+  }
+}
+
+/** span → 文本（Markdown 下加粗斜体记号；纯文本下只留字） */
+function spansToText(spans: Span[], markdown: boolean): string {
+  let out: string = '';
+  for (let i: number = 0; i < spans.length; i++) {
+    const s = spans[i];
+    if (!markdown) {
+      out = out + s.text;
+      continue;
+    }
+    let piece: string = s.text;
+    if (s.bold) {
+      piece = '**' + piece + '**';
+    }
+    if (s.italic) {
+      piece = '*' + piece + '*';
+    }
+    out = out + piece;
+  }
+  return out;
+}
+
+/** 心情 → 人类可读（`😄 开心`；自定义心情用它的文案） */
+function moodLabelOf(meta: NoteMeta): string {
+  if (meta.mood.length === 0) {
+    return '';
+  }
+  if (meta.mood === 'custom') {
+    return meta.moodText.length > 0 ? meta.moodText : '';
+  }
+  const m = moodById(meta.mood);
+  return m === null ? '' : m.emoji + ' ' + m.label;
 }
 
 /** 明文 → 备份字节（页面层拿它去加密再写文件） */

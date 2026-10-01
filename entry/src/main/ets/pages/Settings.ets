@@ -7,7 +7,10 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { APP_NAME_CN, APP_VERSION } from '../common/AppMeta';
 import { DEV_SHOW_BADGE } from '../common/DevFlags';
 import { getStore } from '../data/NoteStoreHolder';
-import { BackupItem, backupFileName, buildBackup, parseBackup } from '../data/BackupService';
+import {
+  BackupItem, EXT_MD, EXT_TXT, backupFileName, buildBackup, parseBackup, readableFileName,
+  toMarkdown, toPlainText, utf8Encode
+} from '../data/BackupService';
 
 /**
  * 设置页（Phase 7 备份 + 关于）
@@ -66,6 +69,45 @@ struct Settings {
       hilog.info(DOMAIN, TAG, 'exported %{public}d notes', items.length);
     } catch (e) {
       hilog.error(DOMAIN, TAG, 'export failed: %{public}s', JSON.stringify(e));
+      this.toast = '导出取消或失败';
+    }
+  }
+
+  /**
+   * 可读导出（**明文**，不加密）
+   *
+   * ⚠️ 为什么必须提示：加密备份落在外面也是密文，而这个是**明文** ——
+   * 用户如果按"反正有密码"的心智把它丢网盘就露了。设置页已写明"不加密，请自行保管"。
+   */
+  private async doExportReadable(markdown: boolean): Promise<void> {
+    const items: BackupItem[] = this.store.exportAll();
+    if (items.length === 0) {
+      this.toast = '还没有日记可以导出';
+      return;
+    }
+    const text: string = markdown ? toMarkdown(items) : toPlainText(items);
+    const bytes: Uint8Array = utf8Encode(text);
+    const ext: string = markdown ? EXT_MD : EXT_TXT;
+    const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    const docPicker: picker.DocumentViewPicker = new picker.DocumentViewPicker();
+    try {
+      const saveOpt: picker.DocumentSaveOptions = {
+        newFileNames: [readableFileName(new Date().toISOString().substring(0, 10), ext)]
+      };
+      const uris: string[] = await docPicker.save(saveOpt);
+      if (uris.length === 0) {
+        return;
+      }
+      const file: fs.File = fs.openSync(uris[0], fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
+      try {
+        fs.writeSync(file.fd, bytes.buffer);
+      } finally {
+        fs.closeSync(file);
+      }
+      this.toast = '已导出 ' + items.length + ' 篇（明文）';
+      hilog.info(DOMAIN, TAG, 'exported readable %{public}d notes, md=%{public}s', items.length, String(markdown));
+    } catch (e) {
+      hilog.error(DOMAIN, TAG, 'readable export failed: %{public}s', JSON.stringify(e));
       this.toast = '导出取消或失败';
     }
   }
@@ -155,6 +197,41 @@ struct Settings {
       }
       .width('100%')
       .padding({ left: 20, right: 20, top: 12, bottom: 12 })
+
+      // 可读导出（数据自主：不把用户锁死在本 App 里）
+      Row() {
+        Text('导出为文本 TXT')
+          .fontSize(14)
+          .fontColor($r('app.color.rj_text'))
+          .onClick(() => {
+            this.doExportReadable(false);
+          })
+        Blank()
+        Text('>')
+          .fontColor($r('app.color.rj_text3'))
+      }
+      .width('100%')
+      .padding({ left: 20, right: 20, top: 12, bottom: 12 })
+
+      Row() {
+        Text('导出为 Markdown')
+          .fontSize(14)
+          .fontColor($r('app.color.rj_text'))
+          .onClick(() => {
+            this.doExportReadable(true);
+          })
+        Blank()
+        Text('>')
+          .fontColor($r('app.color.rj_text3'))
+      }
+      .width('100%')
+      .padding({ left: 20, right: 20, top: 12, bottom: 12 })
+
+      Text('TXT / Markdown 是明文、不加密 —— 请自己保管好；要加密备份请用上面那一项')
+        .fontSize(10)
+        .fontColor($r('app.color.rj_red'))
+        .width('100%')
+        .padding({ left: 20, right: 20, bottom: 12 })
 
       Text('共 ' + this.noteCount + ' 篇 · 上次备份 ' + this.lastBackup)
         .fontSize(10)
