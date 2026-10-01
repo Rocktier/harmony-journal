@@ -97,6 +97,52 @@ export async function recoverByBiometric(filesDir: string): Promise<Uint8Array |
   }
 }
 
+/**
+ * **老库（10a 之前）的解锁 —— 必备的向后兼容**
+ *
+ * ⚠️ 背景（这是真机实拍才暴露的升级事故）：
+ *   10a 之前，主密钥 = `PBKDF2(密码, salt)` **本身**，没有 `vault_pwd.key` 这个文件。
+ *   10a 改成"随机主密钥 + 密码包裹"后，老库里**根本没有** `vault_pwd.key`
+ *   ⇒ `recoverByPassword` 恒返回 null ⇒ **老用户升级后永远打不开**（数据还在，就是进不去）。
+ *
+ * 做法：老库就用老办法派生主密钥；**解锁成功后顺手补写 `vault_pwd.key`**，
+ * 之后所有解锁都走统一路径（对上层完全透明）。
+ * ⚠️ 绝不能"重新生成随机主密钥" —— 那会让老笔记全部解不开。
+ *
+ * @returns 主密钥字节；失败返 null（交给上层当"密码错"处理）
+ */
+export function recoverLegacy(password: string, salt: Uint8Array, filesDir: string): Uint8Array | null {
+  try {
+    const kdf: cryptoFramework.Kdf = cryptoFramework.createKdf('PBKDF2|SHA256');
+    const spec: cryptoFramework.PBKDF2Spec = {
+      algName: 'PBKDF2',
+      password: password,
+      salt: salt,
+      iterations: PBKDF2_ITERATIONS,
+      keySize: KEY_SIZE
+    };
+    const secret: cryptoFramework.DataBlob = kdf.generateSecretSync(spec);
+    const master: Uint8Array = secret.data;
+    // 补写 vault_pwd.key（写失败不影响本次解锁 —— 下次再补）
+    try {
+      const kek: cryptoFramework.SymKey = cryptoFramework.createSymKeyGenerator('AES256').convertKeySync(secret);
+      const iv: Uint8Array = randomBytes(NONCE_LEN);
+      const enc: Uint8Array = aesGcmEncrypt(kek, iv, master);
+      const blob: Uint8Array = new Uint8Array(iv.length + enc.length);
+      blob.set(iv, 0);
+      blob.set(enc, iv.length);
+      writeFile(filesDir + '/' + PWD_FILE, blob);
+      hilog.info(DOMAIN, TAG, 'legacy vault migrated to vault_pwd.key');
+    } catch (e) {
+      hilog.warn(DOMAIN, TAG, 'legacy migration write skipped: %{public}s', JSON.stringify(e));
+    }
+    return master;
+  } catch (e) {
+    hilog.error(DOMAIN, TAG, 'recoverLegacy failed: %{public}s', JSON.stringify(e));
+    return null;
+  }
+}
+
 /** 本机是否具备生物解锁（文件 + HUKS key 都在） */
 export async function hasBiometric(filesDir: string): Promise<boolean> {
   try {

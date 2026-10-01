@@ -316,33 +316,44 @@ struct Editor {
       .width('100%')
       .padding({ left: 20, right: 20, top: 16, bottom: 10 })
 
-      // 这天的其它篇目（**只有多篇才出现** —— 单篇时界面保持零干扰）
-      if (this.dayEntries.length > 1) {
+      /**
+       * 这天的其它篇目 / 再来一篇
+       *
+       * ⚠️ 显示条件必须 >= 1（**不能写成 > 1**）：
+       *    若只在"已有 2 篇"时才出现，第一篇时压根没有 `＋` ⇒ **用户永远加不了第二篇**，
+       *    整个"一天多篇"就成了不可达功能（真机实拍抓到）。
+       *    但计数与 `‹ ›` 仍只在 >1 篇时显示 —— 单篇时界面保持零干扰。
+       */
+      if (this.dayEntries.length >= 1) {
         Row() {
-          Text('本日 ' + this.dayEntries.length + ' 篇')
-            .fontSize(10)
-            .fontFamily('monospace')
-            .fontColor($r('app.color.rj_text3'))
+          if (this.dayEntries.length > 1) {
+            Text('本日 ' + this.dayEntries.length + ' 篇')
+              .fontSize(10)
+              .fontFamily('monospace')
+              .fontColor($r('app.color.rj_text3'))
+          }
           Blank()
-          Text('‹')
-            .fontSize(16)
-            .fontColor(this.dayIndex > 0 ? $r('app.color.rj_text2') : $r('app.color.rj_line'))
-            .padding({ left: 10, right: 10 })
-            .onClick(() => {
-              this.switchTo(-1);
-            })
-          Text((this.dayIndex < 0 ? this.dayEntries.length : this.dayIndex + 1) + '/' + this.dayEntries.length)
-            .fontSize(11)
-            .fontFamily('monospace')
-            .fontColor($r('app.color.rj_text2'))
-          Text('›')
-            .fontSize(16)
-            .fontColor(this.dayIndex >= 0 && this.dayIndex < this.dayEntries.length - 1
-              ? $r('app.color.rj_text2') : $r('app.color.rj_line'))
-            .padding({ left: 10, right: 10 })
-            .onClick(() => {
-              this.switchTo(1);
-            })
+          if (this.dayEntries.length > 1) {
+            Text('‹')
+              .fontSize(16)
+              .fontColor(this.dayIndex > 0 ? $r('app.color.rj_text2') : $r('app.color.rj_line'))
+              .padding({ left: 10, right: 10 })
+              .onClick(() => {
+                this.switchTo(-1);
+              })
+            Text((this.dayIndex < 0 ? this.dayEntries.length : this.dayIndex + 1) + '/' + this.dayEntries.length)
+              .fontSize(11)
+              .fontFamily('monospace')
+              .fontColor($r('app.color.rj_text2'))
+            Text('›')
+              .fontSize(16)
+              .fontColor(this.dayIndex >= 0 && this.dayIndex < this.dayEntries.length - 1
+                ? $r('app.color.rj_text2') : $r('app.color.rj_line'))
+              .padding({ left: 10, right: 10 })
+              .onClick(() => {
+                this.switchTo(1);
+              })
+          }
           Text('＋')
             .fontSize(14)
             .fontColor($r('app.color.rj_text'))

@@ -3,7 +3,10 @@ import { fileIo as fs } from '@kit.CoreFileKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 import { NoteStore } from './NoteStore';
-import { setupVault as custodySetup, recoverByPassword, recoverByBiometric, hasBiometric as custodyHasBio } from '../security/KeyCustody';
+import {
+  setupVault as custodySetup, recoverByPassword, recoverByBiometric, recoverLegacy,
+  hasBiometric as custodyHasBio
+} from '../security/KeyCustody';
 
 /**
  * 全局唯一的 store（**进程级单例**）
@@ -95,7 +98,12 @@ export async function setupVault(password: string): Promise<boolean> {
  * ⚠️ 与 DevFlags.DEV_UNLOCK_BYPASS 无关：正式版只用用户输入的密码。
  */
 export async function unlockWith(password: string): Promise<boolean> {
-  const master: Uint8Array | null = await recoverByPassword(password, vaultSalt, vaultRoot);
+  let master: Uint8Array | null = await recoverByPassword(password, vaultSalt, vaultRoot);
+  if (master === null) {
+    // ★ 老库（10a 之前）没有 vault_pwd.key，主密钥就是 PBKDF2(密码,salt)。
+    //   不兼容这一条 = 老用户升级后数据全打不开（真机实拍抓到的升级事故）。
+    master = await recoverLegacy(password, vaultSalt, vaultRoot);
+  }
   if (master === null) {
     return false;
   }
