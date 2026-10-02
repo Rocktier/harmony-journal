@@ -38,6 +38,31 @@ const LINES: string[] = [
   '有问题写信到：danglei328@163.com'
 ];
 
+/** 一段行内文字（bold 标记是否加粗） */
+interface InlinePart {
+  text: string;
+  bold: boolean;
+}
+
+/**
+ * 极简行内解析：按 `**` 切段，奇数段加粗。
+ *
+ * ⚠️ 为什么要做：政策文本里写了 `**纯本地、不联网**`，直接 Text 会把星号**原样显示**
+ * （审核员必看的信任页出现裸星号 = 不专业）。支持行内加粗后，政策文本也能正常强调。
+ */
+function splitInline(line: string): InlinePart[] {
+  const parts: string[] = line.split('**');
+  const out: InlinePart[] = [];
+  for (let i: number = 0; i < parts.length; i++) {
+    if (parts[i].length === 0) {
+      continue;
+    }
+    const part: InlinePart = { text: parts[i], bold: i % 2 === 1 };
+    out.push(part);
+  }
+  return out;
+}
+
 @Entry
 @Component
 struct Privacy {
@@ -70,10 +95,15 @@ struct Privacy {
                 .margin({ top: 18, bottom: 6 })
                 .width('100%')
             } else {
-              Text(line)
+              Text() {
+                ForEach(splitInline(line), (part: InlinePart) => {
+                  Span(part.text)
+                    .fontWeight(part.bold ? FontWeight.Bold : FontWeight.Normal)
+                    .fontColor(part.bold ? $r('app.color.rj_text') : $r('app.color.rj_text2'))
+                }, (part: InlinePart) => part.text)
+              }
                 .fontSize(13)
                 .lineHeight(22)
-                .fontColor($r('app.color.rj_text2'))
                 .margin({ bottom: 4 })
                 .width('100%')
             }
