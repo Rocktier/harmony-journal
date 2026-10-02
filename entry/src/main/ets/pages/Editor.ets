@@ -5,9 +5,11 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 
 import { ImageStore } from '../data/ImageStore';
 
-import { Block, Span, wordCountOf } from '../data/NoteBlocks';
+import { Block, Span, UNDO_LIMIT, blocksToJson, jsonToBlocks, popSnapshot, pushSnapshot, wordCountOf } from '../data/NoteBlocks';
 import { blocksToLines, linesToBlocks } from '../data/NoteBridge';
-import { MOODS, Mood, NoteMeta, isValidDateKey, parseTags, tagsToText, todayKey } from '../data/NoteMeta';
+import {
+  MOODS, Mood, NoteMeta, isValidDateKey, parseTags, tagsToText, timeOfDay, todayKey
+} from '../data/NoteMeta';
 import { NoteStore } from '../data/NoteStore';
 import { getStore } from '../data/NoteStoreHolder';
 import { RawSpan } from '../data/NoteBlocks';
@@ -24,6 +26,13 @@ import { mergeSpans } from '../data/NoteBlocks';
  */
 const DOMAIN: number = 0x0000;
 const TAG: string = 'RockJournal';
+/**
+ * 正文字号。
+ * ⚠️ RichEditor 没有 fontSize 属性，只能在 `addTextSpan` 的 span style 与
+ *    `setTypingStyle` 上给（查过 SDK d.ts）。日记是**长文阅读**，
+ *    13~16px 在 6 寸屏上偏弱 ⇒ 正文给到 17vp，行高靠系统默认。
+ */
+const BODY_SIZE: number = 17;
 
 @Entry
 @Component
@@ -45,11 +54,39 @@ struct Editor {
   @State private favorite: boolean = false;
   /** 标签输入串（逗号分隔；保存时才解析成数组） */
   @State private tagsText: string = '';
+  /** 最近一次成功保存的时刻（HH:mm）—— 给"真的存上了"一个确定感 */
+  @State private savedAt: string = '';
+  /** 撤销/重做是否可用（块级快照；本 SDK 的 RichEditor 无 undo API） */
+  @State private canUndo: boolean = false;
+  @State private canRedo: boolean = false;
   private pendingLines: string[] = [];
   private store: NoteStore = getStore();
   private images: ImageStore = new ImageStore();
   private controller: RichEditorController = new RichEditorController();
   private options: RichEditorOptions = { controller: this.controller };
+  /** 自动保存防抖计时器（-1 = 没有待保存的定时器） */
+  private saveTimer: number = -1;
+  /** 上一次落盘的内容（撤销栈的基准，也是"有没有变化"的判据） */
+  private lastJson: string = '';
+  private undoStack: string[] = [];
+  private redoStack: string[] = [];
+  /**
+   * 灌入后的抑制窗口（毫秒时间戳）。
+   * ⚠️ `restore()` 会触发 `onDidChange`，若不抑制，刚打开一篇就立刻把内容存一遍。
+   *    用"时间窗"而不是布尔标志，是因为 onDidChange 是异步回调，比 restore 晚到。
+   */
+  private suppressUntil: number = 0;
+
+  aboutToDisappear(): void {
+    // 离开页面（返回键/切走）前把待保存的内容立刻落盘，别只靠防抖定时器
+    if (this.saveTimer >= 0) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = -1;
+    }
+    if (!this.saved) {
+      this.save();
+    }
+  }
 
   aboutToAppear(): void {
     const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
@@ -79,6 +116,13 @@ struct Editor {
       this.refreshImagePreviews(ctx);
       this.pendingLines = [];
       this.words = 0;
+      // ⚠️ 撤销基准也要初始化（空文档）：否则新建日记的**第一次**保存不会入栈，
+      //    撤销按钮全程是灰的 —— 恰好是最需要撤销的场景（刚写了一大段想全删）。
+      this.lastJson = blocksToJson([]);
+      this.canUndo = false;
+      this.canRedo = false;
+      this.undoStack = [];
+      this.redoStack = [];
     }
     this.resolveDayList();
     hilog.info(DOMAIN, TAG, 'open note id=%{public}s date=%{public}s', this.entryId, this.date);
@@ -107,6 +151,12 @@ struct Editor {
     // ⚠️ 不在这里灌入：RichEditor 未 onReady 时 addTextSpan 会静默失败（实拍抓到）。
     this.pendingLines = blocksToLines(blocks);
     this.words = wordCountOf(blocks);
+    // 撤销基准 = 打开时的内容（否则第一次保存会push一个"空→有内容"的假撤销步骤）
+    this.lastJson = blocksToJson(blocks);
+    this.canUndo = false;
+    this.canRedo = false;
+    this.undoStack = [];
+    this.redoStack = [];
   }
 
   /** 刷新"这一天有几篇、当前是第几篇"（切换条的数据源） */
@@ -159,19 +209,98 @@ struct Editor {
 
   /** 把行文本灌回 RichEditor（块 → 行）—— 必须在 onReady 之后调用 */
   private restore(): void {
+    // 灌入期间不要触发自动保存（否则刚打开就存一次，等于白写一遍索引）
+    this.suppressUntil = Date.now() + 500;
     this.lines = this.pendingLines;
     try {
-      this.controller.deleteSpans({ start: 0, end: -1 });
+      // ⚠️ 必须**不传参数**：`deleteSpans(value?: RichEditorRange)` 的语义是
+      //    "留空 = 删掉全部 span"；传 `{start:0, end:-1}` 里 end:-1 不是有效值，
+      //    会静默不删 —— 于是旧内容留着、新内容接在后面（实拍抓到：撤销后 22 字）。
+      //    这个 bug 同时影响 `switchTo`（切篇）与 `addAnotherHere`（新开一篇）。
+      this.controller.deleteSpans();
     } catch (e) {
-      hilog.warn(DOMAIN, TAG, 'deleteSpans skipped');
+      hilog.error(DOMAIN, TAG, 'deleteSpans failed: %{public}s', JSON.stringify(e));
     }
     for (let i: number = 0; i < this.lines.length; i++) {
       if (i > 0) {
-        this.controller.addTextSpan('\n', { style: { fontSize: 16, fontColor: '#FFFFFF' } });
+        this.controller.addTextSpan('\n', { style: { fontSize: BODY_SIZE, fontColor: '#FFFFFF' } });
       }
-      this.controller.addTextSpan(this.lines[i], { style: { fontSize: 16, fontColor: '#FFFFFF' } });
+      this.controller.addTextSpan(this.lines[i], { style: { fontSize: BODY_SIZE, fontColor: '#FFFFFF' } });
     }
     hilog.info(DOMAIN, TAG, 'restored %{public}d lines', this.lines.length);
+  }
+
+  /**
+   * 正文变化：标未保存 + **1.5s 防抖自动落盘**
+   *
+   * ⚠️ 为什么必须自动保存（第一性：日记 App 的底线是"写下的不会消失"）：
+   * 原来只在离开页面时保存，而 HarmonyOS 后台管控随时可能杀进程（实拍日志里就有
+   * `Kill Reason: UpgradeApp`）⇒ 写了半天被回收，一句"未保存"根本救不回来。
+   * 保存应该是**持续保证**，不是"一个动作"。
+   */
+  private onContentChanged(): void {
+    if (Date.now() < this.suppressUntil) {
+      return;
+    }
+    this.saved = false;
+    this.scheduleSave();
+  }
+
+  private scheduleSave(): void {
+    if (this.saveTimer >= 0) {
+      clearTimeout(this.saveTimer);
+    }
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = -1;
+      this.save();
+    }, 1500);
+  }
+
+  /** 当前编辑区内容 → JSON（撤销快照的原料，与落盘用同一份序列化） */
+  private currentJson(): string {
+    return blocksToJson(this.collect());
+  }
+
+  /** 把一份快照灌回编辑区 */
+  private applySnapshot(json: string): void {
+    try {
+      const blocks: Block[] = jsonToBlocks(json);
+      this.pendingLines = blocksToLines(blocks);
+      this.restore();
+      this.words = wordCountOf(blocks);
+    } catch (e) {
+      hilog.error(DOMAIN, TAG, 'applySnapshot failed: %{public}s', JSON.stringify(e));
+    }
+  }
+
+  private doUndo(): void {
+    const popped = popSnapshot(this.undoStack);
+    if (popped.json.length === 0) {
+      return;
+    }
+    this.redoStack = pushSnapshot(this.redoStack, this.lastJson, UNDO_LIMIT);
+    this.lastJson = popped.json;
+    this.undoStack = popped.stack;
+    this.applySnapshot(popped.json);
+    this.canUndo = this.undoStack.length > 0;
+    this.canRedo = this.redoStack.length > 0;
+    this.save();
+    hilog.info(DOMAIN, TAG, 'undo applied');
+  }
+
+  private doRedo(): void {
+    const popped = popSnapshot(this.redoStack);
+    if (popped.json.length === 0) {
+      return;
+    }
+    this.undoStack = pushSnapshot(this.undoStack, this.lastJson, UNDO_LIMIT);
+    this.lastJson = popped.json;
+    this.redoStack = popped.stack;
+    this.applySnapshot(popped.json);
+    this.canUndo = this.undoStack.length > 0;
+    this.canRedo = this.redoStack.length > 0;
+    this.save();
+    hilog.info(DOMAIN, TAG, 'redo applied');
   }
 
   /** 编辑器 → 块（保存路径：getSpans 碎片 → 合并 → 切行 → 块） */
@@ -281,14 +410,21 @@ struct Editor {
     this.saved = ok;
     this.words = wordCountOf(blocks);
     if (ok) {
+      // 撤销栈：把**上一个版本**推进去（块级快照；本 SDK RichEditor 无 undo API）
+      const json: string = blocksToJson(withImages);
+      if (json !== this.lastJson) {
+        this.undoStack = pushSnapshot(this.undoStack, this.lastJson, UNDO_LIMIT);
+        this.lastJson = json;
+        this.redoStack = [];
+        this.canUndo = this.undoStack.length > 0;
+        this.canRedo = false;
+      }
+      // 给出"真的存上了、什么时候存的"的确定感（安全感的来源是这个时间戳）
+      this.savedAt = timeOfDay(Date.now());
       // 保存后这一天的篇数/次序可能变了 ⇒ 切换条必须跟着刷新
       this.resolveDayList();
     }
     hilog.info(DOMAIN, TAG, 'save id=%{public}s ok=%{public}s blocks=%{public}d', this.entryId, ok, withImages.length);
-  }
-
-  aboutToDisappear(): void {
-    this.save();
   }
 
   private setSpanStyle(bold: boolean, italic: boolean): void {
@@ -328,9 +464,13 @@ struct Editor {
             this.save();
           })
         Blank()
-        Text(this.saved ? '已保存' : '未保存')
+        // 保存状态：带时间戳 + 一次极短的透明度过渡（"看起来快"也是快）
+        Text(this.saved ? (this.savedAt.length > 0 ? '已保存 ' + this.savedAt : '已保存') : '未保存…')
           .fontSize(10)
+          .fontFamily('monospace')
           .fontColor($r('app.color.rj_text3'))
+          .opacity(this.saved ? 1.0 : 0.45)
+          .animation({ duration: 220, curve: Curve.EaseOut })
       }
       .width('100%')
       .padding({ left: 20, right: 20, top: 16, bottom: 10 })
@@ -416,6 +556,7 @@ struct Editor {
         .onChange((v: string) => {
           this.tagsText = v;
           this.saved = false;
+          this.scheduleSave();
         })
 
       // 正文
@@ -425,13 +566,13 @@ struct Editor {
         .backgroundColor(Color.Transparent)
         .caretColor($r('app.color.rj_red'))
         .selectedBackgroundColor('#33FF4A3D')
-        .placeholder('写点什么…（# 标题、- 列表）', { font: { size: 16 }, fontColor: '#52FFFFFF' })
+        .placeholder('写点什么…（# 标题、- 列表）', { font: { size: BODY_SIZE }, fontColor: '#52FFFFFF' })
         .onReady(() => {
           this.setSpanStyle(false, false);
           this.restore();
         })
         .onDidChange(() => {
-          this.saved = false;
+          this.onContentChanged();
         })
         .padding({ left: 20, right: 20, top: 4 })
 
@@ -490,6 +631,21 @@ struct Editor {
           .fontSize(10)
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_text3'))
+          .padding(10)
+        // 撤销/重做：不可逆的编辑必须有退路（手机上手指一滑就是一段话没了）
+        Text('撤销')
+          .fontSize(12)
+          .fontColor(this.canUndo ? $r('app.color.rj_text') : $r('app.color.rj_line'))
+          .onClick(() => {
+            this.doUndo();
+          })
+          .padding(10)
+        Text('重做')
+          .fontSize(12)
+          .fontColor(this.canRedo ? $r('app.color.rj_text') : $r('app.color.rj_line'))
+          .onClick(() => {
+            this.doRedo();
+          })
           .padding(10)
         Text('保存')
           .fontSize(12)

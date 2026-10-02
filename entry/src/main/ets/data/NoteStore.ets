@@ -26,6 +26,8 @@ const DOMAIN: number = 0x0000;
 const TAG: string = 'RockJournal';
 const NOTES_DIR: string = 'notes';
 const INDEX_FILE: string = 'index.rkd';
+/** 记录最近一次导出时刻的小文件（**不含日记内容**，只存一个时间戳） */
+const BACKUP_MARK: string = 'last_backup';
 /** 摘要长度（列表/时间轴一行显示得下的量；存进索引，避免渲染时再解密） */
 const PREVIEW_LEN: number = 42;
 
@@ -207,6 +209,51 @@ export class NoteStore {
   /** 某篇的纯文本（解密 + 块→文本；不存在/解不开 → 空串） */
   textOf(id: string): string {
     return this.plainOfBlocks(this.readEntry(id));
+  }
+
+  /**
+   * 记下"最近一次导出"的时刻（备份提醒用）
+   *
+   * 只写一个纯文本小文件 `last_backup`，**不含任何日记内容** ——
+   * 提醒逻辑本身不该碰用户数据。
+   */
+  markBackup(): void {
+    const p: string = this.root + '/' + BACKUP_MARK;
+    const data: Uint8Array = this.utf8(String(Date.now()));
+    try {
+      // ⚠️ HarmonyOS 的 fileIo **没有** writeFileSync/readFileSync（别凭记忆写，那是 Node 的 API）
+      const file: fs.File = fs.openSync(p, fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
+      try {
+        fs.writeSync(file.fd, data.buffer);
+      } finally {
+        fs.closeSync(file);
+      }
+    } catch (e) {
+      hilog.warn(DOMAIN, TAG, 'markBackup failed: %{public}s', JSON.stringify(e));
+    }
+  }
+
+  /** 最近一次导出的时刻（从未导出 = 0） */
+  lastBackupAt(): number {
+    const p: string = this.root + '/' + BACKUP_MARK;
+    try {
+      if (!fs.accessSync(p)) {
+        return 0;
+      }
+      const file: fs.File = fs.openSync(p, fs.OpenMode.READ_ONLY);
+      let text: string = '';
+      try {
+        const buf: ArrayBuffer = new ArrayBuffer(fs.statSync(p).size);
+        fs.readSync(file.fd, buf);
+        text = new util.TextDecoder().decodeToString(new Uint8Array(buf));
+      } finally {
+        fs.closeSync(file);
+      }
+      const n: number = Number(text.trim());
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    } catch (e) {
+      return 0;
+    }
   }
 
   /** 第一张图片的 ref（时间轴缩略图用；没有图返回空串） */

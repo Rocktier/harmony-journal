@@ -2,11 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  JournalStats, MonthCell, MOODS, NoteMeta, TimelineRow, computeStats, daysInMonth, dateKeyOf,
-  isValidDateKey, isValidNoteId, monthGrid, monthOf, moodById, newNoteId, onThisDayDates, parseTags,
-  previewText, prevDateKey, searchNotes, shiftMonth, tagsToText, timeOfDay, timelineRows, todayKey,
-  yearsAgoLabel
+  JournalStats, MonthCell, MOODS, NoteMeta, TimelineRow, collectTags, computeStats, daysSinceMs,
+  daysInMonth, dateKeyOf, filterMetas, isValidDateKey, isValidNoteId, monthGrid, monthOf, monthRowCount,
+  moodById, needsBackupReminder, newNoteId, onThisDayDates, parseTags, previewText, prevDateKey,
+  searchNotes, shiftMonth, tagsToText, timeOfDay, timelineRows, todayKey, yearsAgoLabel
 } from '../entry/src/main/ets/data/NoteMeta';
+import { popSnapshot, pushSnapshot } from '../entry/src/main/ets/data/NoteBlocks';
 
 /** 造条目（只关心被测字段，其余走默认） */
 function entry(date: string, id: string, createdAt: number = 1): NoteMeta {
@@ -247,6 +248,74 @@ test('搜索：命中正文时仍给正文摘要（不被标签分支抢走）',
   const hits = searchNotes(texts, '开会');
   assert.equal(hits.length, 1);
   assert.ok(hits[0].snippet.indexOf('开会') >= 0);
+});
+
+test('撤销栈：压入/弹出 + 上限淘汰 + 空栈安全', () => {
+  let stack: string[] = [];
+  stack = pushSnapshot(stack, 'a', 3);
+  stack = pushSnapshot(stack, 'b', 3);
+  stack = pushSnapshot(stack, 'c', 3);
+  assert.deepEqual(stack, ['a', 'b', 'c']);
+  let r = popSnapshot(stack);
+  assert.equal(r.json, 'c');
+  assert.deepEqual(r.stack, ['a', 'b']);
+  r = popSnapshot(r.stack);
+  assert.equal(r.json, 'b');
+  // 空栈：返回空 json，调用方据此判断"没得撤了"（不抛异常）
+  r = popSnapshot([]);
+  assert.equal(r.json, '');
+  assert.deepEqual(r.stack, []);
+  // 超上限淘汰最老的
+  stack = pushSnapshot(stack, 'd', 3);
+  assert.deepEqual(stack, ['b', 'c', 'd']);
+  // 空字符串不入栈（否则会造出一个"空内容"的假撤销步骤）
+  assert.deepEqual(pushSnapshot([], '', 3), []);
+});
+
+test('备份提醒：没日记不打扰 / 从未备份要提醒 / 到期才提醒', () => {
+  const now: number = new Date(2026, 9, 2, 12, 0, 0).getTime();
+  const day: number = 86400000;
+  assert.equal(needsBackupReminder(0, now, false, 30), false);
+  assert.equal(needsBackupReminder(0, now, true, 30), true);
+  assert.equal(needsBackupReminder(now - 10 * day, now, true, 30), false);
+  assert.equal(needsBackupReminder(now - 31 * day, now, true, 30), true);
+  assert.equal(daysSinceMs(now - 5 * day, now), 5);
+  assert.equal(daysSinceMs(0, now), -1);
+});
+
+test('日历行数：按当月实际需要（不固定 6 行）', () => {
+  // 2026-10-01 是周四 ⇒ 4 个前导位 + 31 天 = 35 ⇒ 5 行
+  assert.equal(monthRowCount('2026-10'), 5);
+  // 2026-02-01 是周日 ⇒ 6 + 28 = 34 ⇒ 5 行
+  assert.equal(monthRowCount('2026-02'), 5);
+  // 2027-02-01 是周一 ⇒ 0 + 28 = 28 ⇒ **4 行**（这才是"少一行"的那类月份）
+  assert.equal(monthRowCount('2027-02'), 4);
+  assert.equal(monthRowCount('2024-02'), 5);
+  assert.equal(monthRowCount('乱写'), 6);
+});
+
+test('筛选：收藏 / 心情 / 标签可组合（数据全在索引里，零 IO）', () => {
+  const metas: NoteMeta[] = [entry('2026-10-02', 'a'), entry('2026-10-01', 'b')];
+  metas[0].favorite = true;
+  metas[0].mood = 'happy';
+  metas[0].tags = ['工作'];
+  assert.equal(filterMetas(metas, true, '', '').length, 1);
+  assert.equal(filterMetas(metas, false, 'happy', '').length, 1);
+  assert.equal(filterMetas(metas, false, '', '工作').length, 1);
+  assert.equal(filterMetas(metas, true, 'happy', '工作').length, 1);
+  assert.equal(filterMetas(metas, true, 'happy', '家人').length, 0);
+  assert.equal(filterMetas(metas, false, '', '').length, 2);
+});
+
+test('标签汇总：去重 + 按热度降序（常写的排前面）', () => {
+  const a = entry('2026-10-02', 'a');
+  a.tags = ['工作', '家人'];
+  const b = entry('2026-10-01', 'b');
+  b.tags = ['工作'];
+  const c = entry('2026-09-30', 'c');
+  c.tags = ['工作', '旅行'];
+  assert.deepEqual(collectTags([a, b, c]), ['工作', '家人', '旅行']);
+  assert.deepEqual(collectTags([]), []);
 });
 
 test('时间轴：月份变化处插入标题，首行必是标题', () => {

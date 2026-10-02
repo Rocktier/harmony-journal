@@ -7,9 +7,9 @@ import { DEV_SHOW_BADGE } from '../common/DevFlags';
 import { TimelineDataSource } from '../common/TimelineDataSource';
 import { ImageStore } from '../data/ImageStore';
 import {
-  JournalStats, MonthCell, NoteMeta, NoteText, SearchHit, TimelineRow, computeStats, moodById, monthGrid,
-  monthOf, onThisDayDates, previewText, searchNotes, shiftMonth, timeOfDay, timelineRows, todayKey,
-  yearsAgoLabel
+  JournalStats, MOODS, MonthCell, Mood, NoteMeta, NoteText, SearchHit, TimelineRow, collectTags,
+  computeStats, filterMetas, moodById, monthGrid, monthOf, monthRowCount, needsBackupReminder,
+  onThisDayDates, previewText, searchNotes, shiftMonth, timeOfDay, timelineRows, todayKey, yearsAgoLabel
 } from '../data/NoteMeta';
 import { NoteStore } from '../data/NoteStore';
 import { getStore } from '../data/NoteStoreHolder';
@@ -27,8 +27,12 @@ import { getStore } from '../data/NoteStoreHolder';
  */
 const DOMAIN: number = 0x0000;
 const TAG: string = 'RockJournal';
-/** 那年今日最多展示几条（超出就截断，避免把主页挤成回忆录） */
-const RECALL_MAX: number = 3;
+/**
+ * 那年今日最多展示几条。
+ * ⚠️ 从 3 提到 5：这一栏的价值在**连续性**（1 年前 / 2 年前 / 3 年前…），
+ * 只给一条就只是"一条往年记录"，给到 5 条才是"这几年这一天我都在做什么"。
+ */
+const RECALL_MAX: number = 5;
 /** 卡片里摘要的字数（比索引里的 42 稍短，卡片空间有限） */
 const RECALL_PREVIEW_LEN: number = 40;
 
@@ -60,6 +64,13 @@ struct Index {
   @State private stats: JournalStats = {
     total: 0, days: 0, words: 0, streak: 0, longest: 0, wroteToday: false
   };
+  /** 筛选（数据全在索引里 ⇒ 零 IO 成本）：仅收藏 / 心情 / 标签 */
+  @State private onlyFavorite: boolean = false;
+  @State private filterMood: string = '';
+  @State private filterTag: string = '';
+  @State private allTags: string[] = [];
+  /** 距上次备份超过阈值就提醒一次（不自动写文件、只提醒） */
+  @State private backupDue: boolean = false;
   private store: NoteStore = getStore();
   private images: ImageStore = new ImageStore();
   /** 时间轴的惰性数据源（换数据必须 reload 才会重画） */
@@ -84,11 +95,33 @@ struct Index {
   private reload(): void {
     this.metas = this.store.list();
     this.loaded = true;
-    // 时间轴：换数据必须走 reload（内部会 onDataReloaded），否则界面不重画
-    this.dataSource.reload(timelineRows(this.metas));
+    this.allTags = collectTags(this.metas);
     this.stats = computeStats(this.metas, todayKey());
+    // 备份提醒：生命线靠自觉是不成立的，到期提醒一次（阈值 30 天）
+    this.backupDue = needsBackupReminder(this.store.lastBackupAt(), Date.now(), this.metas.length > 0, 30);
+    this.refreshData();
     this.buildRecall();
     hilog.info(DOMAIN, TAG, 'index loaded: %{public}d notes, recall %{public}d', this.metas.length, this.recall.length);
+  }
+
+  /** 把筛选后的结果灌进时间轴（换数据必须走 reload，否则 LazyForEach 不重画） */
+  private refreshData(): void {
+    const shown: NoteMeta[] = filterMetas(this.metas, this.onlyFavorite, this.filterMood, this.filterTag);
+    this.dataSource.reload(timelineRows(shown));
+  }
+
+  /** 筛选条上的一枚按钮（选中才亮） */
+  @Builder
+  private chip(label: string, active: boolean, onTap: () => void) {
+    Text(label)
+      .fontSize(11)
+      .fontColor(active ? $r('app.color.rj_text') : $r('app.color.rj_text3'))
+      .backgroundColor(active ? $r('app.color.rj_g100') : $r('app.color.rj_card'))
+      .padding({ left: 10, right: 10, top: 5, bottom: 5 })
+      .margin({ right: 8 })
+      .onClick(() => {
+        onTap();
+      })
   }
 
   /** 「那年今日」：把往年同日的日记预先算成卡片（渲染时零 IO） */
@@ -128,8 +161,16 @@ struct Index {
     return uri;
   }
 
+  /**
+   * 月视图的格子。
+   *
+   * ⚠️ `monthGrid` 固定返回 42 格（6 行 × 7，"切月不跳动"的老约定，单测也锁着 42）。
+   *    但 10 月只有 5 行 —— 若照 42 格全渲染、只把 rowsTemplate 收成 5 行，
+   *    多出的 7 格没有轨道，**整个 Grid 会不渲染**（实拍抓到：日历一个日子都不见了）。
+   *    所以这里**只渲染实际存在的行**：模型不变，界面不浪费那一行空间。
+   */
   private cells(): MonthCell[] {
-    return monthGrid(this.monthKey, this.store.allDates());
+    return monthGrid(this.monthKey, this.store.allDates()).slice(0, this.calRows() * 7);
   }
 
   /**
@@ -142,6 +183,24 @@ struct Index {
    *     月视图里再放一份全量列表 = 同一需求两份更差的实现。
    *  ③ 复用 `timelineRows` 只取 note 行 ⇒ `showTime` 的判断与时间轴完全同源（同日多篇才补 HH:mm）。
    */
+  /**
+   * 当月日历要几行。
+   * ⚠️ 必须是**普通方法**而不是 getter：ArkUI 的 build 里对 getter 求值不可靠
+   *    （实测高度算成 NaN ⇒ Grid 一个格子都不渲染）。
+   */
+  private calRows(): number {
+    return monthRowCount(this.monthKey);
+  }
+
+  private rowTemplate(): string {
+    let t: string = '';
+    const n: number = this.calRows();
+    for (let i: number = 0; i < n; i++) {
+      t = i === 0 ? '1fr' : t + ' 1fr';
+    }
+    return t;
+  }
+
   private monthRows(): TimelineRow[] {
     const inMonth: NoteMeta[] = [];
     for (let i: number = 0; i < this.metas.length; i++) {
@@ -212,6 +271,15 @@ struct Index {
             .margin({ left: 8 })
         }
         Blank()
+        // 「写今天」提到头部：一天里最高频的动作不该要滚过日历和列表才看得到
+        Text('写今天')
+          .fontSize(12)
+          .fontColor($r('app.color.rj_red'))
+          .fontWeight(FontWeight.Bold)
+          .margin({ right: 16 })
+          .onClick(() => {
+            this.open(todayKey());
+          })
         Text(this.mode === 'month' ? '月' : '时光')
           .fontSize(10)
           .fontFamily('monospace')
@@ -255,6 +323,57 @@ struct Index {
       }
       .width('100%')
       .padding({ left: 20, right: 20, bottom: 8 })
+
+      // 备份提醒：生命线靠自觉是不成立的，到期提醒一次（不自动写文件、不重复骚扰）
+      if (this.backupDue) {
+        Row() {
+          Text('距上次备份超过 30 天了 · 去备份')
+            .fontSize(11)
+            .fontColor($r('app.color.rj_red'))
+            .layoutWeight(1)
+          Text('去备份 ›')
+            .fontSize(11)
+            .fontColor($r('app.color.rj_red'))
+            .onClick(() => {
+              router.pushUrl({ url: 'pages/Settings' });
+            })
+        }
+        .width('100%')
+        .padding({ left: 20, right: 20, bottom: 8 })
+      }
+
+      // 筛选条：数据全在索引里 ⇒ 零 IO 成本；几百篇之后这是"还能不能用"的分界线
+      Row() {
+        this.chip('★ 收藏', this.onlyFavorite, () => {
+          this.onlyFavorite = !this.onlyFavorite;
+          this.refreshData();
+        })
+        ForEach(MOODS, (m: Mood) => {
+          this.chip(m.emoji, this.filterMood === m.id, () => {
+            this.filterMood = this.filterMood === m.id ? '' : m.id;
+            this.refreshData();
+          })
+        })
+      }
+      .width('100%')
+      .padding({ left: 20, right: 20, bottom: 4 })
+
+      if (this.allTags.length > 0) {
+        Scroll() {
+          Row() {
+            ForEach(this.allTags, (t: string) => {
+              this.chip('#' + t, this.filterTag === t, () => {
+                this.filterTag = this.filterTag === t ? '' : t;
+                this.refreshData();
+              })
+            })
+          }
+        }
+        .scrollable(ScrollDirection.Horizontal)
+        .scrollBar(BarState.Off)
+        .width('100%')
+        .padding({ left: 20, right: 20, bottom: 6 })
+      }
 
       // 搜索
       TextInput({ placeholder: '搜日记', text: this.query })
@@ -408,8 +527,9 @@ struct Index {
           }, (cell: MonthCell) => cell.date)
         }
         .columnsTemplate('1fr 1fr 1fr 1fr 1fr 1fr 1fr')
-        .rowsTemplate('1fr 1fr 1fr 1fr 1fr 1fr')
-        .height(300)
+        // 行数按当月实际需要（10 月只有 5 行，固定 6 行会白占 1/3 屏）
+        .rowsTemplate(this.rowTemplate())
+        .height(this.calRows() * 50)
         .padding({ left: 16, right: 16 })
 
         // 本月日记列表（**只列这个月** —— 顶部月份导航与列表范围必须一致，见 monthRows）
@@ -587,17 +707,8 @@ struct Index {
         .divider({ strokeWidth: 1, color: $r('app.color.rj_line') })
       }
 
-      // 写今天
-      Button('写今天')
-        .fontSize(14)
-        .backgroundColor($r('app.color.rj_text'))
-        .fontColor($r('app.color.rj_bg'))
-        .height(44)
-        .width('86%')
-        .margin({ bottom: 28, top: 8 })
-        .onClick(() => {
-          this.open(todayKey());
-        })
+      // ⚠️ 原来这里还有一个底部大按钮「写今天」，现已提到头部 ——
+      //    同一意图两个入口会让人犹豫该点哪个，而且底部那个要滚过日历+列表才看得到。
     }
     .width('100%')
     .height('100%')

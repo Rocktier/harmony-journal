@@ -6,7 +6,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 
 import { APP_NAME_CN, APP_VERSION } from '../common/AppMeta';
 import { DEV_SHOW_BADGE } from '../common/DevFlags';
-import { JournalStats, computeStats, todayKey } from '../data/NoteMeta';
+import { JournalStats, computeStats, dateKeyOf, todayKey } from '../data/NoteMeta';
 import { getStore } from '../data/NoteStoreHolder';
 import {
   BackupItem, EXT_MD, EXT_TXT, backupFileName, buildBackup, parseBackup, readableFileName,
@@ -36,6 +36,9 @@ struct Settings {
   aboutToAppear(): void {
     this.noteCount = this.store.list().length;
     this.stats = computeStats(this.store.list(), todayKey());
+    // 上次备份：**读真实记录**，不再写死"从未"（否则"生命线"永远是句空话）
+    const at: number = this.store.lastBackupAt();
+    this.lastBackup = at > 0 ? dateKeyOf(new Date(at)) : '从未';
   }
 
   private async doExport(): Promise<void> {
@@ -70,7 +73,8 @@ struct Settings {
         fs.closeSync(file);
       }
       this.toast = '已导出 ' + items.length + ' 篇';
-      this.lastBackup = new Date().toISOString().substring(0, 10);
+      this.store.markBackup();
+      this.lastBackup = todayKey();
       hilog.info(DOMAIN, TAG, 'exported %{public}d notes', items.length);
     } catch (e) {
       hilog.error(DOMAIN, TAG, 'export failed: %{public}s', JSON.stringify(e));
@@ -232,7 +236,10 @@ struct Settings {
       .width('100%')
       .padding({ left: 20, right: 20, top: 12, bottom: 12 })
 
-      Text('TXT / Markdown 是明文、不加密 —— 请自己保管好；要加密备份请用上面那一项')
+      // 告知要说全：明文风险 **和** 图片不包含在内。
+      // ⚠️ 只说"明文"是不够的 —— 用户会以为导出=全部，迁走后才发现照片全丢，
+      //    那属于"承诺不一致"，比缺功能更伤信任。图片请用加密备份。
+      Text('TXT / Markdown 是明文、不加密，且不含图片（只留占位）—— 图片请用上面的加密备份')
         .fontSize(10)
         .fontColor($r('app.color.rj_red'))
         .width('100%')

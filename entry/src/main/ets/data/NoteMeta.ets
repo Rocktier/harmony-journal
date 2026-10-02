@@ -487,6 +487,103 @@ export function computeStats(metas: NoteMeta[], today: string): JournalStats {
   return { total: metas.length, days: dates.length, words: words, streak: streak, longest: longest, wroteToday: wroteToday };
 }
 
+/**
+ * 距上次备份多少天（纯逻辑，可单测）
+ *
+ * ⚠️ 为什么需要"备份提醒"：备份是生命线，但**人不会记得点**。
+ * 真实用户往往在丢数据之后才想起这件事 ⇒ 到期就提醒一次（不自动写文件、不打扰）。
+ */
+export function daysSinceMs(ts: number, nowMs: number): number {
+  if (ts <= 0 || nowMs <= ts) {
+    return -1; // 从未备份 / 时间异常
+  }
+  return Math.floor((nowMs - ts) / 86400000);
+}
+
+/** 该不该提醒备份（纯逻辑，可单测） */
+export function needsBackupReminder(lastBackupAt: number, nowMs: number, hasNotes: boolean, thresholdDays: number): boolean {
+  if (!hasNotes) {
+    return false; // 没日记就没什么可丢的，不打扰
+  }
+  const d: number = daysSinceMs(lastBackupAt, nowMs);
+  if (d < 0) {
+    return true; // 从未备份过 ⇒ 一定要提醒
+  }
+  return d >= thresholdDays;
+}
+
+/**
+ * 这个月要渲染几行日历（纯逻辑，可单测）
+ *
+ * ⚠️ 为什么算它：日历原本固定 6 行 300px，10 月只有 5 行 ⇒ **空占一屏三分之一**。
+ * 而"切月不跳动"的取舍是对的（不该动），所以保留顺序、只把行数收对。
+ */
+export function monthRowCount(monthKey: string): number {
+  const parts: string[] = monthKey.split('-');
+  if (parts.length !== 2) {
+    return 6;
+  }
+  const y: number = Number(parts[0]);
+  const m: number = Number(parts[1]);
+  if (m < 1 || m > 12) {
+    return 6;
+  }
+  // 与 monthGrid 同规则：周一开头，先补前导空位
+  const first: Date = new Date(y, m - 1, 1);
+  const lead: number = (first.getDay() + 6) % 7;
+  const total: number = lead + daysInMonth(y, m);
+  return Math.ceil(total / 7);
+}
+
+/**
+ * 列表筛选（纯逻辑，可单测）
+ *
+ * ⚠️ 为什么值得做：日期/心情/标签/收藏**全在索引里**（零 IO 成本），
+ * 但只有全文搜索的话，"记得是个下雨的周一"这种模糊记忆永远搜不到。
+ * 几百篇之后，筛选就是"还能不能用"的分界线。
+ */
+export function filterMetas(metas: NoteMeta[], onlyFavorite: boolean, mood: string, tag: string): NoteMeta[] {
+  const out: NoteMeta[] = [];
+  for (let i: number = 0; i < metas.length; i++) {
+    const m: NoteMeta = metas[i];
+    if (onlyFavorite && !m.favorite) {
+      continue;
+    }
+    if (mood.length > 0 && m.mood !== mood) {
+      continue;
+    }
+    if (tag.length > 0 && m.tags.indexOf(tag) < 0) {
+      continue;
+    }
+    out.push(m);
+  }
+  return out;
+}
+
+/** 全部出现过的标签（去重、按热度降序 —— 常写的排前面，纯逻辑可单测） */
+export function collectTags(metas: NoteMeta[]): string[] {
+  const counts: Map<string, number> = new Map<string, number>();
+  for (let i: number = 0; i < metas.length; i++) {
+    const tags: string[] = metas[i].tags;
+    for (let j: number = 0; j < tags.length; j++) {
+      const cur: number | undefined = counts.get(tags[j]);
+      counts.set(tags[j], cur === undefined ? 1 : cur + 1);
+    }
+  }
+  const keys: string[] = [];
+  counts.forEach((v: number, k: string) => {
+    keys.push(k);
+  });
+  keys.sort((a: string, b: string) => {
+    const ca: number | undefined = counts.get(a);
+    const cb: number | undefined = counts.get(b);
+    const na: number = ca === undefined ? 0 : ca;
+    const nb: number = cb === undefined ? 0 : cb;
+    return na === nb ? (a < b ? -1 : 1) : nb - na;
+  });
+  return keys;
+}
+
 /** 时间戳 → `HH:mm`（同日多篇时用来区分） */
 export function timeOfDay(ts: number): string {
   if (!Number.isFinite(ts) || ts <= 0) {

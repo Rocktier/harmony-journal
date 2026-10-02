@@ -159,6 +159,41 @@ function isCjk(c: string): boolean {
 }
 
 /** 规范化：剔除空块、补齐 img 的 ref、未知类型降级为 p（坏数据不炸） */
+/** 撤销栈弹出一层的结果 */
+export interface UndoPop {
+  stack: string[];
+  json: string;
+}
+
+/** 撤销栈最多保留几层（内存里存的是序列化文本，不能无限长） */
+export const UNDO_LIMIT: number = 20;
+
+/**
+ * 撤销栈：压入一层（纯逻辑，可单测）
+ *
+ * ⚠️ 为什么自己实现而不用 RichEditor 的撤销：
+ * 本 SDK（API 26）的 `RichEditorController` **没有公开 undo/redo API**（只有 `undoStyle` 样式开关），
+ * 所以在**我们自己的块模型**上做快照撤销更可靠 —— 撤销的正是"将被落盘的那一份数据"。
+ */
+export function pushSnapshot(stack: string[], json: string, limit: number): string[] {
+  if (json.length === 0) {
+    return stack;
+  }
+  const next: string[] = stack.concat([json]);
+  while (next.length > limit) {
+    next.shift();
+  }
+  return next;
+}
+
+/** 撤销栈：弹出一层（空栈返回空 json，调用方据此判断"没得撤了"） */
+export function popSnapshot(stack: string[]): UndoPop {
+  if (stack.length === 0) {
+    return { stack: [], json: '' };
+  }
+  return { stack: stack.slice(0, stack.length - 1), json: stack[stack.length - 1] };
+}
+
 export function normalizeBlocks(blocks: Block[]): Block[] {
   const out: Block[] = [];
   for (let i: number = 0; i < blocks.length; i++) {
