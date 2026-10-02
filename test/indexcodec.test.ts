@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  INDEX_APP, INDEX_VERSION, encodeIndex, normalizeEntries, parseIndex, parseIndexStrict, sortEntries
+  INDEX_APP, INDEX_VERSION, encodeIndex, normalizeEntries, parseIndex, parseIndexStrict, sanitizeTags,
+  sortEntries
 } from '../entry/src/main/ets/data/IndexCodec';
 import { NoteMeta } from '../entry/src/main/ets/data/NoteMeta';
 
@@ -14,9 +15,13 @@ function entry(date: string, id: string, extra: Partial<NoteMeta> = {}): NoteMet
     createdAt: 1,
     mood: '',
     moodText: '',
+    preview: '',
     updatedAt: 2,
     words: 0,
-    hasImage: false
+    hasImage: false,
+    imgRef: '',
+    favorite: false,
+    tags: []
   };
   return { ...base, ...extra };
 }
@@ -146,6 +151,30 @@ test('摘要与首图引用：老数据没有 ⇒ 空串（展示时优雅降级
   assert.equal(got[0].preview, '');
   assert.equal(got[0].imgRef, '');
   assert.equal(got[0].hasImage, false);
+});
+
+test('★ 老条目 createdAt 为 0 ⇒ 必须退回 updatedAt（否则时间轴不显示 HH:mm）', () => {
+  // 真机实拍发现的观感缺陷：typeof 0 === 'number' 曾让 0 被当成有效值保留
+  const broken: string = JSON.stringify({
+    app: INDEX_APP, v: INDEX_VERSION,
+    items: [{ id: 'x', date: '2026-10-02', createdAt: 0, updatedAt: 1700000000000 }]
+  });
+  const got: NoteMeta[] = parseIndex(broken);
+  assert.equal(got[0].createdAt, 1700000000000);   // 不是 0
+});
+
+test('收藏与标签：老数据没有 ⇒ 默认 false / 空数组', () => {
+  const legacy: string = JSON.stringify({ v: 1, items: [{ date: '2026-10-02', updatedAt: 5 }] });
+  const got: NoteMeta[] = parseIndex(legacy);
+  assert.equal(got[0].favorite, false);
+  assert.deepEqual(got[0].tags, []);
+});
+
+test('标签清洗：去 # 前缀、去重、去空、限长限条数', () => {
+  assert.deepEqual(sanitizeTags(['#工作', '家人', '家人', '  ', '']), ['工作', '家人']);
+  assert.deepEqual(sanitizeTags(undefined), []);
+  assert.deepEqual(sanitizeTags(['这是一段非常非常非常非常长的标签文字']), []);  // 超长丢弃
+  assert.equal(sanitizeTags(['a', 'b']).length, 2);
 });
 
 test('normalizeEntries：同一天多篇都能留下（这是 N2 的核心保证）', () => {

@@ -11,6 +11,7 @@
  */
 import { Block, Span, jsonToBlocks, blocksToJson } from './NoteBlocks';
 import { NoteMeta, isValidDateKey, isValidNoteId, moodById } from './NoteMeta';
+import { sanitizeTags } from './IndexCodec';
 
 export const BACKUP_APP: string = 'rockjournal';
 /**
@@ -191,7 +192,9 @@ export function parseBackup(plain: Uint8Array): BackupItem[] {
       updatedAt: updatedAt,
       words: src !== undefined && typeof src.words === 'number' ? src.words : 0,
       hasImage: src !== undefined && src.hasImage === true,
-      imgRef: src !== undefined && typeof src.imgRef === 'string' ? src.imgRef : ''
+      imgRef: src !== undefined && typeof src.imgRef === 'string' ? src.imgRef : '',
+      favorite: src !== undefined && src.favorite === true,
+      tags: sanitizeTags(src !== undefined ? src.tags : undefined)
     };
     const kept: BackupItem = {
       date: it.date,

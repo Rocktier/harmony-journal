@@ -7,7 +7,7 @@ import { ImageStore } from '../data/ImageStore';
 
 import { Block, Span, wordCountOf } from '../data/NoteBlocks';
 import { blocksToLines, linesToBlocks } from '../data/NoteBridge';
-import { MOODS, Mood, NoteMeta, isValidDateKey, todayKey } from '../data/NoteMeta';
+import { MOODS, Mood, NoteMeta, isValidDateKey, parseTags, tagsToText, todayKey } from '../data/NoteMeta';
 import { NoteStore } from '../data/NoteStore';
 import { getStore } from '../data/NoteStoreHolder';
 import { RawSpan } from '../data/NoteBlocks';
@@ -41,6 +41,10 @@ struct Editor {
   /** 这**一天**的全部日记（切换条用；只有 >1 篇才显示） */
   @State private dayEntries: NoteMeta[] = [];
   @State private dayIndex: number = -1;
+  /** 收藏（★） */
+  @State private favorite: boolean = false;
+  /** 标签输入串（逗号分隔；保存时才解析成数组） */
+  @State private tagsText: string = '';
   private pendingLines: string[] = [];
   private store: NoteStore = getStore();
   private images: ImageStore = new ImageStore();
@@ -86,6 +90,8 @@ struct Editor {
     if (meta !== null) {
       this.mood = meta.mood;
       this.moodText = meta.moodText;
+      this.favorite = meta.favorite;
+      this.tagsText = tagsToText(meta.tags);
     }
     // 解密已有内容 → 行文本 → 回灌编辑器；图片块单独提出来（正文只存 ref）
     const blocks: Block[] = this.store.readEntry(id);
@@ -138,6 +144,8 @@ struct Editor {
     this.entryId = this.store.newEntryId();
     this.mood = '';
     this.moodText = '';
+    this.favorite = false;
+    this.tagsText = '';
     this.lines = [];
     this.imgRefs = [];
     this.imgPaths = [];
@@ -268,7 +276,8 @@ struct Editor {
       const imgBlock: Block = { type: 'img', spans: [], ref: this.imgRefs[i] };
       withImages.push(imgBlock);
     }
-    const ok: boolean = this.store.saveEntry(this.entryId, this.date, withImages, this.mood, this.moodText);
+    const ok: boolean = this.store.saveEntry(this.entryId, this.date, withImages, this.mood, this.moodText,
+      this.favorite, parseTags(this.tagsText));
     this.saved = ok;
     this.words = wordCountOf(blocks);
     if (ok) {
@@ -308,6 +317,16 @@ struct Editor {
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_text'))
           .letterSpacing(2)
+        // 收藏：重要的几篇★住，以后一眼能挑出来
+        Text(this.favorite ? '★' : '☆')
+          .fontSize(16)
+          .fontColor(this.favorite ? $r('app.color.rj_red') : $r('app.color.rj_text3'))
+          .margin({ left: 10 })
+          .padding(4)
+          .onClick(() => {
+            this.favorite = !this.favorite;
+            this.save();
+          })
         Blank()
         Text(this.saved ? '已保存' : '未保存')
           .fontSize(10)
@@ -385,6 +404,19 @@ struct Editor {
       }
       .width('100%')
       .padding({ left: 14, bottom: 8 })
+
+      // 标签（逗号分隔；留空即无标签）
+      TextInput({ placeholder: '标签（逗号分隔，如：工作, 家人）', text: this.tagsText })
+        .fontSize(12)
+        .backgroundColor($r('app.color.rj_card'))
+        .fontColor($r('app.color.rj_text'))
+        .placeholderColor($r('app.color.rj_text3'))
+        .height(34)
+        .margin({ left: 20, right: 20, bottom: 6 })
+        .onChange((v: string) => {
+          this.tagsText = v;
+          this.saved = false;
+        })
 
       // 正文
       RichEditor(this.options)

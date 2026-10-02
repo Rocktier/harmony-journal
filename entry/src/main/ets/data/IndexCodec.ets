@@ -114,17 +114,26 @@ export function normalizeEntries(raw: NoteMeta[], legacy: boolean): NoteMeta[] {
     }
     seen.add(id);
     const updatedAt: number = typeof it.updatedAt === 'number' ? it.updatedAt : 0;
+    /**
+     * ⚠️ 这里必须判 `> 0`，不能只判"是不是数字"：
+     * `typeof 0 === 'number'` 成立，于是 `createdAt: 0` 会被当成有效值保留，
+     * 结果是时间轴里老条目**不显示 HH:mm**（`timeOfDay(0)` 返回空串）——
+     * 真机实拍发现的观感缺陷。0 不是有效时间戳，一律退回 `updatedAt`。
+     */
+    const rawCreated: number = typeof it.createdAt === 'number' ? it.createdAt : 0;
     const entry: NoteMeta = {
       id: id,
       date: it.date,
-      createdAt: typeof it.createdAt === 'number' ? it.createdAt : updatedAt,
+      createdAt: rawCreated > 0 ? rawCreated : updatedAt,
       mood: typeof it.mood === 'string' ? it.mood : '',
       moodText: typeof it.moodText === 'string' ? it.moodText : '',
       preview: typeof it.preview === 'string' ? it.preview : '', // 老数据没有 ⇒ 空串，展示时降级
       updatedAt: updatedAt,
       words: typeof it.words === 'number' ? it.words : 0,
       hasImage: it.hasImage === true,
-      imgRef: typeof it.imgRef === 'string' ? it.imgRef : ''
+      imgRef: typeof it.imgRef === 'string' ? it.imgRef : '',
+      favorite: it.favorite === true,
+      tags: sanitizeTags(it.tags)
     };
     out.push(entry);
   }
@@ -135,6 +144,36 @@ export function normalizeEntries(raw: NoteMeta[], legacy: boolean): NoteMeta[] {
 export function encodeIndex(items: NoteMeta[]): string {
   const holder: IndexHolder = { app: INDEX_APP, v: INDEX_VERSION, items: sortEntries(items) };
   return JSON.stringify(holder);
+}
+
+/**
+ * 标签清洗（脏标签会让"只搜标签"全是噪声）：
+ * 只保留非空字符串、去重、去掉 `#` 前缀（用户常顺手打上）、限长防把索引撑爆。
+ */
+export function sanitizeTags(raw: string[] | undefined): string[] {
+  if (raw === undefined || !Array.isArray(raw)) {
+    return [];
+  }
+  const out: string[] = [];
+  const seen: Set<string> = new Set<string>();
+  for (let i: number = 0; i < raw.length && out.length < 12; i++) {
+    // ⚠️ 不能用 `unknown` 类型（ArkTS 10605008 arkts-no-any-unknown）—— 用 string + typeof 校验
+    const one: string = raw[i];
+    if (typeof one !== 'string') {
+      continue;
+    }
+    let t: string = one.trim();
+    while (t.length > 0 && t.charAt(0) === '#') {
+      t = t.substring(1);
+    }
+    t = t.trim();
+    if (t.length === 0 || t.length > 16 || seen.has(t)) {
+      continue;
+    }
+    seen.add(t);
+    out.push(t);
+  }
+  return out;
 }
 
 /** id 冲突时换个后缀（确定性重编号，方便单测与排错） */

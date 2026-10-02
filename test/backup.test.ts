@@ -14,8 +14,9 @@ function span(text: string, bold: boolean = false, italic: boolean = false): Spa
 
 function metaOf(date: string, id: string, updatedAt: number, words: number): NoteMeta {
   return {
-    id: id, date: date, createdAt: updatedAt, mood: 'happy', moodText: '',
-    updatedAt: updatedAt, words: words, hasImage: false
+    id: id, date: date, createdAt: updatedAt, mood: 'happy', moodText: '', preview: '',
+    updatedAt: updatedAt, words: words, hasImage: false, imgRef: '',
+    favorite: false, tags: []
   };
 }
 

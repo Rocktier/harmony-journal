@@ -174,7 +174,8 @@ struct Index {
       const item: NoteText = {
         id: m.id,
         date: m.date,
-        text: this.store.textOf(m.id)
+        text: this.store.textOf(m.id),
+        tags: m.tags
       };
       texts.push(item);
     }
@@ -439,6 +440,12 @@ struct Index {
                       .fontSize(14)
                       .margin({ left: 10 })
                   }
+                  if (row.meta !== null && row.meta.favorite) {
+                    Text('★')
+                      .fontSize(14)
+                      .fontColor($r('app.color.rj_red'))
+                      .margin({ left: 10 })
+                  }
                   Blank()
                   Text(row.meta !== null ? row.meta.words + ' 字' : '')
                     .fontSize(10)
@@ -446,6 +453,14 @@ struct Index {
                     .fontColor($r('app.color.rj_text3'))
                 }
                 .width('100%')
+                // 标签：用户给的主题词，找得回来的第二条路
+                if (row.meta !== null && row.meta.tags.length > 0) {
+                  Text('#' + row.meta.tags.join(' #'))
+                    .fontSize(10)
+                    .fontFamily('monospace')
+                    .fontColor($r('app.color.rj_text3'))
+                    .margin({ top: 3 })
+                }
                 // 摘要来自索引缓存 ⇒ 零额外 IO，月视图也能"看到自己写过的话"
                 if (row.meta !== null && row.meta.preview.length > 0) {
                   Text(row.meta.preview)
@@ -514,6 +529,12 @@ struct Index {
                           .fontSize(13)
                           .margin({ left: 8 })
                       }
+                      if (row.meta.favorite) {
+                        Text('★')
+                          .fontSize(13)
+                          .fontColor($r('app.color.rj_red'))
+                          .margin({ left: 8 })
+                      }
                       Blank()
                       Text(row.meta.words + ' 字')
                         .fontSize(10)
@@ -521,6 +542,13 @@ struct Index {
                         .fontColor($r('app.color.rj_text3'))
                     }
                     .width('100%')
+                    if (row.meta.tags.length > 0) {
+                      Text('#' + row.meta.tags.join(' #'))
+                        .fontSize(10)
+                        .fontFamily('monospace')
+                        .fontColor($r('app.color.rj_text3'))
+                        .margin({ top: 3 })
+                    }
                     // 摘要来自索引缓存（零额外 IO）；老数据没有 ⇒ 这一行就没有，不硬凑
                     if (row.meta.preview.length > 0) {
                       Text(row.meta.preview)

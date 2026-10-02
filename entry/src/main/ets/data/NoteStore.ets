@@ -5,7 +5,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 
 import { Block, blocksToJson, jsonToBlocks, wordCountOf } from './NoteBlocks';
 import { NoteMeta, isValidDateKey, newNoteId, previewText } from './NoteMeta';
-import { encodeIndex, parseIndexStrict, sortEntries } from './IndexCodec';
+import { encodeIndex, parseIndexStrict, sanitizeTags, sortEntries } from './IndexCodec';
 import { BackupItem } from './BackupService';
 import { VaultService } from './VaultService';
 
@@ -156,7 +156,8 @@ export class NoteStore {
    * ⚠️ 一天多篇之后，写必须是"更新指定的那篇"，不能按 date 覆盖 ——
    * 否则在同一天打开第二篇时，会悄悄把第一篇内容写没了。
    */
-  saveEntry(id: string, date: string, blocks: Block[], mood: string, moodText: string): boolean {
+  saveEntry(id: string, date: string, blocks: Block[], mood: string, moodText: string,
+    favorite: boolean, tags: string[]): boolean {
     try {
       let entryId: string = id;
       if (entryId.length === 0) {
@@ -182,7 +183,9 @@ export class NoteStore {
         updatedAt: now,
         words: wordCountOf(blocks),
         hasImage: blocks.some((b: Block) => b.type === 'img'),
-        imgRef: this.firstImgRef(blocks)
+        imgRef: this.firstImgRef(blocks),
+        favorite: favorite,
+        tags: sanitizeTags(tags)
       });
       return this.saveIndex();
     } catch (e) {
@@ -335,7 +338,7 @@ export class NoteStore {
       if (this.byId(id) !== null) {
         id = this.newEntryId();
       }
-      if (this.saveEntry(id, it.date, it.blocks, it.meta.mood, it.meta.moodText)) {
+      if (this.saveEntry(id, it.date, it.blocks, it.meta.mood, it.meta.moodText, it.meta.favorite, it.meta.tags)) {
         n++;
       }
     }

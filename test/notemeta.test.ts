@@ -3,15 +3,17 @@ import assert from 'node:assert/strict';
 
 import {
   JournalStats, MonthCell, MOODS, NoteMeta, TimelineRow, computeStats, daysInMonth, dateKeyOf,
-  isValidDateKey, isValidNoteId, monthGrid, monthOf, moodById, newNoteId, onThisDayDates, previewText,
-  prevDateKey, searchNotes, shiftMonth, timeOfDay, timelineRows, todayKey, yearsAgoLabel
+  isValidDateKey, isValidNoteId, monthGrid, monthOf, moodById, newNoteId, onThisDayDates, parseTags,
+  previewText, prevDateKey, searchNotes, shiftMonth, tagsToText, timeOfDay, timelineRows, todayKey,
+  yearsAgoLabel
 } from '../entry/src/main/ets/data/NoteMeta';
 
 /** 造条目（只关心被测字段，其余走默认） */
 function entry(date: string, id: string, createdAt: number = 1): NoteMeta {
   return {
     id: id, date: date, createdAt: createdAt, mood: '', moodText: '',
-    preview: '', updatedAt: createdAt, words: 0, hasImage: false, imgRef: ''
+    preview: '', updatedAt: createdAt, words: 0, hasImage: false, imgRef: '',
+    favorite: false, tags: []
   };
 }
 
@@ -94,9 +96,9 @@ test('心情：5 个封闭选项，查得到也查不到', () => {
 });
 
 test('搜索：大小写不敏感 + 中文 + 给出上下文摘要', () => {
-  const texts: { id: string; date: string; text: string }[] = [
-    { id: 'n1', date: '2026-09-28', text: '今天去了公园，看到 Hello 世界' },
-    { id: 'n2', date: '2026-09-27', text: '啥也没干' }
+  const texts = [
+    { id: 'n1', date: '2026-09-28', text: '今天去了公园，看到 Hello 世界', tags: [] as string[] },
+    { id: 'n2', date: '2026-09-27', text: '啥也没干', tags: [] as string[] }
   ];
   const hits = searchNotes(texts, 'hello');
   assert.equal(hits.length, 1);
@@ -215,6 +217,38 @@ test('统计：字数累加（含同一天多篇）', () => {
   assert.equal(computeStats([a, b], '2026-10-02').words, 150);
 });
 
+test('标签解析：中英文逗号与空白都拆得开，去重、去空', () => {
+  assert.deepEqual(parseTags('工作, 家人'), ['工作', '家人']);
+  assert.deepEqual(parseTags('工作，家人 旅行'), ['工作', '家人', '旅行']);
+  assert.deepEqual(parseTags('工作,工作, 家人'), ['工作', '家人']);   // 去重
+  assert.deepEqual(parseTags('  '), []);
+  assert.deepEqual(parseTags(''), []);
+});
+
+test('标签：数组回写为逗号串（编辑器输入框用）', () => {
+  assert.equal(tagsToText(['工作', '家人']), '工作, 家人');
+  assert.equal(tagsToText([]), '');
+});
+
+test('搜索：标签也参与匹配（打标签就是为了以后找得回来）', () => {
+  const texts = [
+    { id: 'n1', date: '2026-10-02', text: '今天开会', tags: ['工作'] },
+    { id: 'n2', date: '2026-10-01', text: '今天也开会', tags: ['家人'] }
+  ];
+  const hits = searchNotes(texts, '工作');
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].id, 'n1');        // 正文没有"工作"，靠标签命中
+  // 摘要必须能看出"为什么命中" —— 命中在标签里就直接给标签，不要甩一段正文给用户猜
+  assert.equal(hits[0].snippet, '#工作');
+});
+
+test('搜索：命中正文时仍给正文摘要（不被标签分支抢走）', () => {
+  const texts = [{ id: 'n1', date: '2026-10-02', text: '今天开会', tags: ['工作'] }];
+  const hits = searchNotes(texts, '开会');
+  assert.equal(hits.length, 1);
+  assert.ok(hits[0].snippet.indexOf('开会') >= 0);
+});
+
 test('时间轴：月份变化处插入标题，首行必是标题', () => {
   const rows: TimelineRow[] = timelineRows([
     entry('2026-09-30', 'a'), entry('2026-09-28', 'b'), entry('2026-08-01', 'c')
@@ -274,7 +308,7 @@ test('时间 HH:mm 补零正确', () => {
 
 test('搜索摘要：emoji 不会被切成半个（代理对安全）', () => {
   const text: string = '开头😀😀😀中间结尾';
-  const hits = searchNotes([{ id: 'n1', date: '2026-09-28', text: text }], '中间');
+  const hits = searchNotes([{ id: 'n1', date: '2026-09-28', text: text, tags: [] as string[] }], '中间');
   assert.equal(hits.length, 1);
   // 摘要里必须出现完整的 emoji，不能出现替换字符
   assert.ok(hits[0].snippet.indexOf('�') < 0);

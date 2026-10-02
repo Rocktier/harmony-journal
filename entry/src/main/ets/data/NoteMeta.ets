@@ -64,6 +64,10 @@ export interface NoteMeta {
   words: number;
   /** 是否含图片 */
   hasImage: boolean;
+  /** 是否收藏（★ —— 重要的几篇留住，不淹没在时间里） */
+  favorite: boolean;
+  /** 标签（用户自己给的主题词，逗号分隔输入；搜索也认它） */
+  tags: string[];
   /**
    * 第一张图片的相对路径（`img/<id>.enc`），没有图则空串。
    * ⚠️ 与 preview 同理：**缓存进索引**，时间轴才能只解图片、不必解密整篇 ——
@@ -250,11 +254,40 @@ export interface SearchHit {
   snippet: string;
 }
 
-/** 搜索输入：一篇日记的 id + 日期 + 纯文本 */
+/** 搜索输入：一篇日记的 id + 日期 + 纯文本 + 标签 */
 export interface NoteText {
   id: string;
   date: string;
   text: string;
+  /** 标签也参与匹配（用户给的主题词，本来就是为了以后找得回来） */
+  tags: string[];
+}
+
+/**
+ * 标签串 → 标签数组（纯逻辑，可单测）
+ *
+ * 用户视角：输入"工作, 家庭"或"工作 家庭"（中文习惯可能都来），都要能拆开；
+ * 空标签、重复标签都要处理干净 —— 标签脏了，后面筛选和搜索全是噪声。
+ */
+export function parseTags(input: string): string[] {
+  const out: string[] = [];
+  const seen: Set<string> = new Set<string>();
+  // 逗号（中英文）与空白都当分隔符，符合中文输入习惯
+  const parts: string[] = input.split(/[,，\s]+/);
+  for (let i: number = 0; i < parts.length; i++) {
+    const t: string = parts[i].trim();
+    if (t.length === 0 || seen.has(t)) {
+      continue;
+    }
+    seen.add(t);
+    out.push(t);
+  }
+  return out;
+}
+
+/** 标签数组 → 展示/存储用的串（逗号分隔） */
+export function tagsToText(tags: string[]): string {
+  return tags.join(', ');
 }
 
 // ── 回头看（Phase 10b：那年今日 + 时光时间轴）—— 纯逻辑，全部带单测 ──────────
@@ -479,9 +512,20 @@ export function searchNotes(texts: NoteText[], query: string): SearchHit[] {
   const hits: SearchHit[] = [];
   for (let i: number = 0; i < texts.length; i++) {
     const item: NoteText = texts[i];
-    const lower: string = item.text.toLowerCase();
+    // 标签并入搜索范围：用户打标签就是为了以后找得回来
+    const tagged: string = item.tags.length > 0 ? item.text + '\n' + item.tags.join(' ') : item.text;
+    const lower: string = tagged.toLowerCase();
     const at: number = lower.indexOf(q);
     if (at < 0) {
+      continue;
+    }
+    /**
+     * 命中在**标签**里时，摘要要直接给标签 —— 否则用户看到一段正文，
+     * 却看不出"为什么这篇会被搜出来"（命中理由必须是可见的）。
+     */
+    if (at >= item.text.length) {
+      const hit: SearchHit = { id: item.id, date: item.date, snippet: '#' + item.tags.join(' #') };
+      hits.push(hit);
       continue;
     }
     const chars: string[] = Array.from(item.text);
