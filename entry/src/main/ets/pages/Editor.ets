@@ -559,6 +559,104 @@ struct Editor {
           this.scheduleSave();
         })
 
+      /**
+       * 工具栏（富文本：B / I / 列表 / 图片；文档操作：撤销 / 重做 / 保存 / 字数）
+       *
+       * ⚠️ 位置为什么必须在**正文上方**（原来在底部，实拍被输入法盖掉过）：
+       *   键盘弹出会把底部那一行顶出屏幕 —— 整排功能键消失的那一刻，
+       *   恰恰是"正写到一半想加粗/插图片"最需要它的时候。
+       *   放上面则键盘怎么弹都遮不住。
+       *
+       * ⚠️ 为什么富文本键比文档操作键"重"：
+       *   富文本是"正在写"时的高频动作 ⇒ 给底 + 更大字号 + 圆角（抬优先级）；
+       *   撤销/重做/保存是低频的兜底动作 ⇒ 保持文字态让位。层级才立得住。
+       *
+       * ⚠️ 全部是真 `Button`（不是 `Text(...).onClick(...)`）：按压反馈 /
+       *   读屏报"按钮" / 可聚焦。`ButtonType.Normal` 显式写死 —— 默认值在
+       *   **API 18 变过**（<18 = Capsule，≥18 = ROUNDED_RECTANGLE），我们覆盖
+       *   API 16+，不写死的话不同版本设备上形状不一致。
+       */
+      Row() {
+        // —— 富文本（高频，抬优先级）——
+        Button('B', { type: ButtonType.Normal, stateEffect: true })
+          .fontSize(14)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.rj_text'))
+          .backgroundColor($r('app.color.rj_card'))
+          .borderRadius(4)
+          .padding({ left: 13, right: 13, top: 7, bottom: 7 })
+          .margin({ right: 6 })
+          .onClick(() => {
+            this.setSpanStyle(true, false);
+          })
+        Button('I', { type: ButtonType.Normal, stateEffect: true })
+          .fontSize(14)
+          .fontStyle(FontStyle.Italic)
+          .fontColor($r('app.color.rj_text'))
+          .backgroundColor($r('app.color.rj_card'))
+          .borderRadius(4)
+          .padding({ left: 15, right: 15, top: 7, bottom: 7 })
+          .margin({ right: 6 })
+          .onClick(() => {
+            this.setSpanStyle(false, true);
+          })
+        Button('列表', { type: ButtonType.Normal, stateEffect: true })
+          .fontSize(13)
+          .fontColor($r('app.color.rj_text'))
+          .backgroundColor($r('app.color.rj_card'))
+          .borderRadius(4)
+          .padding({ left: 11, right: 11, top: 7, bottom: 7 })
+          .margin({ right: 6 })
+          .onClick(() => {
+            this.controller.addTextSpan('- ', { style: { fontSize: 16, fontColor: $r('app.color.rj_text') } });
+          })
+        Button('图片', { type: ButtonType.Normal, stateEffect: true })
+          .fontSize(13)
+          .fontColor($r('app.color.rj_text'))
+          .backgroundColor($r('app.color.rj_card'))
+          .borderRadius(4)
+          .padding({ left: 11, right: 11, top: 7, bottom: 7 })
+          .onClick(() => {
+            this.pickImage();
+          })
+        Blank()
+        // —— 文档操作（低频，文字态让位）——
+        Text(this.words + ' 字')
+          .fontSize(10)
+          .fontFamily('monospace')
+          .fontColor($r('app.color.rj_text3'))
+          .padding({ right: 6 })
+        // 撤销/重做：不可逆的编辑必须有退路（手机上手指一滑就是一段话没了）
+        Button('撤销', { type: ButtonType.Normal, stateEffect: true })
+          .backgroundColor(Color.Transparent)
+          .padding({ left: 6, right: 6, top: 7, bottom: 7 })
+          .fontSize(12)
+          .fontColor(this.canUndo ? $r('app.color.rj_text') : $r('app.color.rj_line'))
+          .enabled(this.canUndo)   // 禁用态交给 Button，读屏也能正确报"已停用"
+          .onClick(() => {
+            this.doUndo();
+          })
+        Button('重做', { type: ButtonType.Normal, stateEffect: true })
+          .backgroundColor(Color.Transparent)
+          .padding({ left: 6, right: 6, top: 7, bottom: 7 })
+          .fontSize(12)
+          .fontColor(this.canRedo ? $r('app.color.rj_text') : $r('app.color.rj_line'))
+          .enabled(this.canRedo)
+          .onClick(() => {
+            this.doRedo();
+          })
+        Button('保存', { type: ButtonType.Normal, stateEffect: true })
+          .backgroundColor(Color.Transparent)
+          .padding({ left: 6, right: 6, top: 7, bottom: 7 })
+          .fontSize(12)
+          .fontColor($r('app.color.rj_red'))
+          .onClick(() => {
+            this.save();
+          })
+      }
+      .width('100%')
+      .padding({ left: 20, right: 20, top: 6, bottom: 8 })
+
       // 正文
       RichEditor(this.options)
         .layoutWeight(1)
@@ -566,7 +664,18 @@ struct Editor {
         .backgroundColor(Color.Transparent)
         .caretColor($r('app.color.rj_red'))
         .selectedBackgroundColor($r('app.color.rj_sel'))
-        .placeholder('写点什么…（# 标题、- 列表）', { font: { size: BODY_SIZE }, fontColor: $r('app.color.rj_text3') })
+        /**
+         * 占位文案**不再提 Markdown**（原来是「写点什么…（# 标题、- 列表）」）。
+         *
+         * ⚠️ 为什么改：写日记的人不该被迫先学一套标记语法 ——
+         * 看到 `# `- ` 会以为"必须这么写才有效果"，这是把内部实现泄漏成了使用负担。
+         * 加粗/列表这些需求，上面工具栏的按钮已经直接给了。
+         *
+         * ⚠️ 但**解析没删**：历史日记里已经存着 `# `/`- ` 形式的文本，
+         * 去掉解析会让老内容"退化成普通文字"（等于静默改用户的日记）。
+         * 所以是"入口上淡化"，不是"能力上取消"。
+         */
+        .placeholder('写点什么…', { font: { size: BODY_SIZE }, fontColor: $r('app.color.rj_text3') })
         .onReady(() => {
           this.setSpanStyle(false, false);
           this.restore();
@@ -594,92 +703,6 @@ struct Editor {
         .padding({ left: 20, top: 8, bottom: 4 })
       }
 
-      /**
-       * 工具栏：B / I / 列表 / 图片 / 字数 / 撤销 / 重做 / 保存
-       *
-       * ⚠️ 为什么这些必须是真正的 `Button`（原来全是 `Text(...).onClick(...)`）：
-       *   ① **按压反馈** —— 伪按钮点了没有任何视觉回应，"有没有点到"没有确认感；
-       *   ② **无障碍** —— 读屏只会念出文本、不报"按钮"，视障用户不知道这里能点；
-       *   ③ **焦点态** —— 外接键盘/触控笔无法聚焦到伪按钮。
-       *   `Button` 自带这三条（`stateEffect` = 鸿蒙标准按压效果），且 `Button` 是 API 7 起就有的组件。
-       *
-       * ⚠️ `type` 必须**显式写 `ButtonType.Normal`**：它的默认值在 **API 18 变过**
-       *    （<18 是 `Capsule`，≥18 是 `ROUNDED_RECTANGLE`）。我们声明覆盖 API 16+，
-       *    不写死的话 16/17 与 18+ 设备上按钮形状会不一致 —— 这正是"要能在所有
-       *    受支持设备上表现一致"的要求。`ButtonType.Normal` = 无圆角，@since 7。
-       */
-      Row() {
-        Button('B', { type: ButtonType.Normal, stateEffect: true })
-          .backgroundColor(Color.Transparent)
-          .padding(10)
-          .fontSize(15)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.rj_text'))
-          .onClick(() => {
-            this.setSpanStyle(true, false);
-          })
-        Button('I', { type: ButtonType.Normal, stateEffect: true })
-          .backgroundColor(Color.Transparent)
-          .padding(10)
-          .fontSize(15)
-          .fontStyle(FontStyle.Italic)
-          .fontColor($r('app.color.rj_text'))
-          .onClick(() => {
-            this.setSpanStyle(false, true);
-          })
-        Button('• 列表', { type: ButtonType.Normal, stateEffect: true })
-          .backgroundColor(Color.Transparent)
-          .padding(10)
-          .fontSize(12)
-          .fontColor($r('app.color.rj_text'))
-          .onClick(() => {
-            this.controller.addTextSpan('- ', { style: { fontSize: 16, fontColor: $r('app.color.rj_text') } });
-          })
-        Button('图片', { type: ButtonType.Normal, stateEffect: true })
-          .backgroundColor(Color.Transparent)
-          .padding(10)
-          .fontSize(12)
-          .fontColor($r('app.color.rj_text'))
-          .onClick(() => {
-            this.pickImage();
-          })
-        Blank()
-        Text(this.words + ' 字')
-          .fontSize(10)
-          .fontFamily('monospace')
-          .fontColor($r('app.color.rj_text3'))
-          .padding(10)
-        // 撤销/重做：不可逆的编辑必须有退路（手机上手指一滑就是一段话没了）
-        Button('撤销', { type: ButtonType.Normal, stateEffect: true })
-          .backgroundColor(Color.Transparent)
-          .padding(10)
-          .fontSize(12)
-          .fontColor(this.canUndo ? $r('app.color.rj_text') : $r('app.color.rj_line'))
-          .enabled(this.canUndo)   // 禁用态交给 Button，读屏也能正确报"已停用"
-          .onClick(() => {
-            this.doUndo();
-          })
-        Button('重做', { type: ButtonType.Normal, stateEffect: true })
-          .backgroundColor(Color.Transparent)
-          .padding(10)
-          .fontSize(12)
-          .fontColor(this.canRedo ? $r('app.color.rj_text') : $r('app.color.rj_line'))
-          .enabled(this.canRedo)
-          .onClick(() => {
-            this.doRedo();
-          })
-        Button('保存', { type: ButtonType.Normal, stateEffect: true })
-          .backgroundColor(Color.Transparent)
-          .padding(10)
-          .fontSize(12)
-          .fontColor($r('app.color.rj_red'))
-          .onClick(() => {
-            this.save();
-          })
-      }
-      .width('100%')
-      .padding({ left: 8, right: 8, bottom: 20 })
-      .border({ width: { top: 1 }, color: $r('app.color.rj_line') })
     }
     .width('100%')
     .height('100%')
