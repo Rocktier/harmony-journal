@@ -2,7 +2,7 @@ import { router } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 import { unlockWith, setupVault, unlockWithBiometric, hasBiometric, isFirstRun } from '../data/NoteStoreHolder';
-import { RJ_FS_CALLOUT, RJ_FS_CAPTION, RJ_FS_DISPLAY, RJ_FS_HEADING, RJ_FS_META, RJ_SP_LG, RJ_SP_MD, RJ_SP_SM, RJ_SP_XL } from '../theme/RjTokens';
+import { RJ_FS_CALLOUT, RJ_FS_CAPTION, RJ_FS_DISPLAY, RJ_FS_HEADING, RJ_FS_META, RJ_SP_LG, RJ_SP_MD, RJ_SP_SM, RJ_SP_TOP_INSET, RJ_SP_VOID, RJ_SP_XL } from '../theme/RjTokens';
 
 /**
  * 解锁页（Phase 8 / 决策 4）：替代开发期 DEV_UNLOCK_BYPASS。
@@ -92,11 +92,11 @@ struct Unlock {
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.rj_text'))
         .letterSpacing(2)
-        .margin({ top: 80, bottom: RJ_SP_MD })
+        .margin({ top: RJ_SP_TOP_INSET, bottom: RJ_SP_MD })
       Text(this.firstRun ? '设置主密码' : '输入主密码解锁')
         .fontSize(RJ_FS_CALLOUT)
         .fontColor($r('app.color.rj_text2'))
-        .margin({ bottom: 40 })
+        .margin({ bottom: RJ_SP_VOID })
 
       TextInput({ placeholder: '主密码', text: this.password })
         .type(InputType.Password)
@@ -158,7 +158,7 @@ struct Unlock {
       Text('数据只在这台设备上 · AES-256-GCM 加密')
         .fontSize(RJ_FS_META)
         .fontColor($r('app.color.rj_text3'))
-        .margin({ bottom: 40, top: 30 })
+        .margin({ bottom: RJ_SP_VOID, top: RJ_SP_VOID })
     }
     .width('100%')
     .height('100%')

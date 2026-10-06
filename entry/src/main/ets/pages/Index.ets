@@ -13,7 +13,7 @@ import {
 } from '../data/NoteMeta';
 import { NoteStore } from '../data/NoteStore';
 import { getStore } from '../data/NoteStoreHolder';
-import { RJ_FS_BODY, RJ_FS_CALLOUT, RJ_FS_CAPTION, RJ_FS_META, RJ_FS_TITLE, RJ_SP_LG, RJ_SP_MD, RJ_SP_SM, RJ_SP_XL, RJ_SP_XS, RJ_SP_XXL, RJ_SP_XXXL } from '../theme/RjTokens';
+import { RJ_FS_BODY, RJ_FS_CALLOUT, RJ_FS_CAPTION, RJ_FS_META, RJ_FS_TITLE, RJ_RADIUS_LG, RJ_RADIUS_SM, RJ_SP_LG, RJ_SP_MD, RJ_SP_SM, RJ_SP_VOID, RJ_SP_VOID_L, RJ_SP_XL, RJ_SP_XS, RJ_SP_XXL, RJ_SP_XXXL } from '../theme/RjTokens';
 
 /**
  * 主页面：月视图日历 + 时光时间轴 + 搜索 + 「那年今日」
@@ -309,7 +309,7 @@ struct Index {
           .fontColor($r('app.color.rj_bg'))
           .fontSize(RJ_FS_CAPTION)
           .fontWeight(FontWeight.Bold)
-          .borderRadius(6)
+          .borderRadius(RJ_RADIUS_LG)
           .padding({ left: RJ_SP_XL, right: RJ_SP_XL, top: RJ_SP_MD, bottom: RJ_SP_MD })
           .margin({ right: RJ_SP_LG })
           .onClick(() => {
@@ -502,7 +502,7 @@ struct Index {
           Text('没有找到')
             .fontSize(RJ_FS_CAPTION)
             .fontColor($r('app.color.rj_text3'))
-            .margin({ top: 40 })
+            .margin({ top: RJ_SP_VOID })
         }
         List() {
           ForEach(this.hits, (hit: SearchHit) => {
@@ -559,17 +559,24 @@ struct Index {
         Grid() {
           ForEach(this.cells(), (cell: MonthCell) => {
             GridItem() {
-              Stack({ alignContent: Alignment.TopEnd }) {
+              /**
+               * 「有日记」的红点：放在数字**正下方**（原来钉在 TopEnd 角上，
+               * 正好压住数字 —— 实拍反馈"红点挡住数字"）。
+               * 点位占**固定高度**：没日记的日子用透明圆占位，
+               * 这样有/没日记的数字保持在同一条水平线上，不会上下跳。
+               */
+              Column() {
                 Text(cell.day.toString())
                   .fontSize(RJ_FS_CALLOUT)
                   .fontFamily('monospace')
                   .fontColor(cell.inMonth ? $r('app.color.rj_text') : $r('app.color.rj_text3'))
-                if (cell.hasNote) {
-                  Circle({ width: 8, height: 8 })
-                    .fill($r('app.color.rj_red'))
-                    .margin({ top: RJ_SP_SM, right: RJ_SP_MD })
-                }
+                  .textAlign(TextAlign.Center)
+                  .width('100%')
+                Circle({ width: 5, height: 5 })
+                  .fill(cell.hasNote ? $r('app.color.rj_red') : Color.Transparent)
+                  .margin({ top: RJ_SP_SM })
               }
+              .justifyContent(FlexAlign.Center)
               .width('100%')
               .height('100%')
             }
@@ -667,7 +674,7 @@ struct Index {
               .fontColor($r('app.color.rj_text3'))
               .margin({ top: RJ_SP_MD })
           }
-          .margin({ top: 60 })
+          .margin({ top: RJ_SP_VOID_L })
         }
         // ⚠️ 铁律①：长列表必须 LazyForEach（只构建可见区域），且换数据要走 dataSource.reload
         List() {
@@ -739,7 +746,7 @@ struct Index {
                       .width(48)
                       .height(48)
                       .objectFit(ImageFit.Cover)
-                      .borderRadius(2)
+                      .borderRadius(RJ_RADIUS_SM)
                       .margin({ left: RJ_SP_LG })
                   }
                 }

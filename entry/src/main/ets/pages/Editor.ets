@@ -14,7 +14,7 @@ import { NoteStore } from '../data/NoteStore';
 import { getStore } from '../data/NoteStoreHolder';
 import { RawSpan } from '../data/NoteBlocks';
 import { mergeSpans } from '../data/NoteBlocks';
-import { RJ_FS_BODY, RJ_FS_CALLOUT, RJ_FS_CAPTION, RJ_FS_HEADING, RJ_FS_META, RJ_FS_TITLE, RJ_SP_LG, RJ_SP_MD, RJ_SP_SM, RJ_SP_XL, RJ_SP_XS, RJ_SP_XXL } from '../theme/RjTokens';
+import { RJ_FS_BODY, RJ_FS_CALLOUT, RJ_FS_CAPTION, RJ_FS_HEADING, RJ_FS_META, RJ_FS_TITLE, RJ_RADIUS_LG, RJ_RADIUS_SM, RJ_SP_LG, RJ_SP_MD, RJ_SP_SM, RJ_SP_XL, RJ_SP_XS, RJ_SP_XXL } from '../theme/RjTokens';
 
 /**
  * 编辑页（Phase 4）：所见即所得
@@ -28,12 +28,12 @@ import { RJ_FS_BODY, RJ_FS_CALLOUT, RJ_FS_CAPTION, RJ_FS_HEADING, RJ_FS_META, RJ
 const DOMAIN: number = 0x0000;
 const TAG: string = 'RockJournal';
 /**
- * 正文字号。
- * ⚠️ RichEditor 没有 fontSize 属性，只能在 `addTextSpan` 的 span style 与
- *    `setTypingStyle` 上给（查过 SDK d.ts）。日记是**长文阅读**，
- *    13~16px 在 6 寸屏上偏弱 ⇒ 正文给到 17vp，行高靠系统默认。
+ * ⚠️ RichEditor 没有 fontSize 属性，正文字号只能在 `addTextSpan` 的 span style 与
+ *    `setTypingStyle` 上给（查过 SDK d.ts）。日记是**长文阅读**，13~16 在 6 寸屏偏弱
+ *    ⇒ 正文取 token `RJ_FS_BODY`(=17)，行高靠系统默认。
+ * ⚠️ 此前这里另有一份局部 `const RJ_FS_BODY = 17`，与 token 同名冲突
+ *    （`arkts-unique-names` 编译不过）—— 已删，正文只剩token 一个来源。
  */
-const BODY_SIZE: number = 17;
 
 @Entry
 @Component
@@ -224,9 +224,9 @@ struct Editor {
     }
     for (let i: number = 0; i < this.lines.length; i++) {
       if (i > 0) {
-        this.controller.addTextSpan('\n', { style: { fontSize: BODY_SIZE, fontColor: $r('app.color.rj_text') } });
+        this.controller.addTextSpan('\n', { style: { fontSize: RJ_FS_BODY, fontColor: $r('app.color.rj_text') } });
       }
-      this.controller.addTextSpan(this.lines[i], { style: { fontSize: BODY_SIZE, fontColor: $r('app.color.rj_text') } });
+      this.controller.addTextSpan(this.lines[i], { style: { fontSize: RJ_FS_BODY, fontColor: $r('app.color.rj_text') } });
     }
     hilog.info(DOMAIN, TAG, 'restored %{public}d lines', this.lines.length);
   }
@@ -437,6 +437,36 @@ struct Editor {
     });
   }
 
+  /** 心情下拉的选项：0 号是「无」（用于取消），其后依次对应 MOODS */
+  private moodOptions(): SelectOption[] {
+    const opts: SelectOption[] = [];
+    opts.push({ value: '无' });
+    MOODS.forEach((m: Mood) => {
+      opts.push({ value: m.emoji });
+    });
+    return opts;
+  }
+
+  /** 当前心情在下拉里的序号（没选 = 0） */
+  private moodSelectedIndex(): number {
+    for (let i: number = 0; i < MOODS.length; i++) {
+      if (MOODS[i].id === this.mood) {
+        return i + 1;
+      }
+    }
+    return 0;
+  }
+
+  /** 下拉框收起时显示的文字（没选显示"心情"当占位） */
+  private moodDisplay(): string {
+    for (let i: number = 0; i < MOODS.length; i++) {
+      if (MOODS[i].id === this.mood) {
+        return MOODS[i].emoji;
+      }
+    }
+    return '心情';
+  }
+
   build() {
     Column() {
       // 头：日期 + 返回
@@ -465,13 +495,23 @@ struct Editor {
             this.save();
           })
         Blank()
-        // 保存状态：带时间戳 + 一次极短的透明度过渡（"看起来快"也是快）
-        Text(this.saved ? (this.savedAt.length > 0 ? '已保存 ' + this.savedAt : '已保存') : '未保存…')
-          .fontSize(RJ_FS_META)
-          .fontFamily('monospace')
-          .fontColor($r('app.color.rj_text3'))
-          .opacity(this.saved ? 1.0 : 0.45)
-          .animation({ duration: 220, curve: Curve.EaseOut })
+        /**
+         * 「保存」放右上角（党哥定的层级）；自动保存状态移到**右下角**并淡化 ——
+         * 它不是给人点的，是给人放心的，不配占用头部。
+         * 仍保留手动保存：自动保存有 1.5s 防抖，"离开前立刻存一下"仍需要一个明确入口。
+         * ⚠️ `ButtonType.Normal` 显式写死（默认值在 API 18 变过，覆盖 16+ 必须锁定）。
+         */
+        Button('保存', { type: ButtonType.Normal, stateEffect: true })
+          .buttonStyle(ButtonStyleMode.EMPHASIZED)
+          .backgroundColor($r('app.color.rj_red'))
+          .fontColor($r('app.color.rj_bg'))
+          .fontSize(RJ_FS_CAPTION)
+          .fontWeight(FontWeight.Bold)
+          .borderRadius(RJ_RADIUS_LG)
+          .padding({ left: RJ_SP_LG, right: RJ_SP_LG, top: RJ_SP_SM, bottom: RJ_SP_SM })
+          .onClick(() => {
+            this.save();
+          })
       }
       .width('100%')
       .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_XL, bottom: RJ_SP_LG })
@@ -527,38 +567,47 @@ struct Editor {
         .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_XS, bottom: RJ_SP_SM })
       }
 
-      // 心情
+      /**
+       * 心情（下拉）+ 标签（收窄）合并成一行。
+       *
+       * ⚠️ 原来各占一大块：心情一整行 5 个大表情（RJ_FS_TITLE 级别，视觉上像在替用户
+       *   强调"今天什么心情"）、标签框宽度撑满 + 长占位文案，看着像 H1 小节标题
+       *   （实拍反馈"标签栏太大了"）。
+       *   两者都是**元信息**，不配占两条主视觉行 ⇒ 收成一行两个次要控件。
+       *
+       * 心情用系统 `Select` 下拉（API 8 起，我们约束内）：0 号 = 「无」（用于取消），
+       *   其后依次对应 MOODS。
+       */
       Row() {
-        ForEach(MOODS, (m: Mood) => {
-          Text(m.emoji)
-            .fontSize(RJ_FS_TITLE)
-            .padding({ left: RJ_SP_MD, right: RJ_SP_MD })
-            .opacity(this.mood === m.id ? 1 : 0.35)
-            .onClick(() => {
-              this.mood = this.mood === m.id ? '' : m.id;
-              if (this.mood === m.id) {
-                this.moodText = '';
-              }
-              this.save();
-            })
-        }, (m: Mood) => m.id)
+        Select(this.moodOptions())
+          .selected(this.moodSelectedIndex())
+          .value(this.moodDisplay())
+          // ⚠️ Select 没有 fontSize 属性（编译实测报 10505001），字号走 Font 的 size
+          .font({ size: RJ_FS_CAPTION })
+          .fontColor($r('app.color.rj_text'))
+          .onSelect((index: number) => {
+            this.mood = index === 0 ? '' : MOODS[index - 1].id;
+            if (this.mood.length === 0) {
+              this.moodText = '';
+            }
+            this.save();
+          })
+        TextInput({ placeholder: '标签', text: this.tagsText })
+          .fontSize(RJ_FS_CAPTION)
+          .backgroundColor($r('app.color.rj_card'))
+          .fontColor($r('app.color.rj_text'))
+          .placeholderColor($r('app.color.rj_text3'))
+          .height(28)
+          .layoutWeight(1)
+          .margin({ left: RJ_SP_MD })
+          .onChange((v: string) => {
+            this.tagsText = v;
+            this.saved = false;
+            this.scheduleSave();
+          })
       }
       .width('100%')
-      .padding({ left: RJ_SP_XL, bottom: RJ_SP_MD })
-
-      // 标签（逗号分隔；留空即无标签）
-      TextInput({ placeholder: '标签（逗号分隔，如：工作, 家人）', text: this.tagsText })
-        .fontSize(RJ_FS_CAPTION)
-        .backgroundColor($r('app.color.rj_card'))
-        .fontColor($r('app.color.rj_text'))
-        .placeholderColor($r('app.color.rj_text3'))
-        .height(34)
-        .margin({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_MD })
-        .onChange((v: string) => {
-          this.tagsText = v;
-          this.saved = false;
-          this.scheduleSave();
-        })
+      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_MD })
 
       /**
        * 工具栏（富文本：B / I / 列表 / 图片；文档操作：撤销 / 重做 / 保存 / 字数）
@@ -568,9 +617,9 @@ struct Editor {
        *   恰恰是"正写到一半想加粗/插图片"最需要它的时候。
        *   放上面则键盘怎么弹都遮不住。
        *
-       * ⚠️ 为什么富文本键比文档操作键"重"：
-       *   富文本是"正在写"时的高频动作 ⇒ 给底 + 更大字号 + 圆角（抬优先级）；
-       *   撤销/重做/保存是低频的兜底动作 ⇒ 保持文字态让位。层级才立得住。
+       * ⚠️ 一律**无框**：每个键一个方框会吃掉大半行，功能一多就放不下 ——
+       *   系统原生文本工具条就是一排无框小键。键与键的区分靠文字与间距，
+       *   不可用的键置灰，不再用"有没有底"表达状态。
        *
        * ⚠️ 全部是真 `Button`（不是 `Text(...).onClick(...)`）：按压反馈 /
        *   读屏报"按钮" / 可聚焦。`ButtonType.Normal` 显式写死 —— 默认值在
@@ -578,15 +627,17 @@ struct Editor {
        *   API 16+，不写死的话不同版本设备上形状不一致。
        */
       Row() {
-        // —— 富文本（高频，抬优先级）——
+        /**
+         * —— 富文本：参考**系统原生文本工具条**的做法 —— 一排紧凑小键、无框。
+         * 原来每个键一个白底方框，四个键就占掉大半行，再往后加功能（对齐/高亮/清单…）
+         * 根本放不下；系统的做法证明"无框小键"既省地方又够清楚。
+         */
         Button('B', { type: ButtonType.Normal, stateEffect: true })
           .fontSize(RJ_FS_CALLOUT)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.rj_text'))
-          .backgroundColor($r('app.color.rj_card'))
-          .borderRadius(4)
-          .padding({ left: RJ_SP_LG, right: RJ_SP_LG, top: RJ_SP_MD, bottom: RJ_SP_MD })
-          .margin({ right: RJ_SP_MD })
+          .backgroundColor(Color.Transparent)
+          .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_SM, bottom: RJ_SP_SM })
           .onClick(() => {
             this.setSpanStyle(true, false);
           })
@@ -594,43 +645,32 @@ struct Editor {
           .fontSize(RJ_FS_CALLOUT)
           .fontStyle(FontStyle.Italic)
           .fontColor($r('app.color.rj_text'))
-          .backgroundColor($r('app.color.rj_card'))
-          .borderRadius(4)
-          .padding({ left: RJ_SP_XL, right: RJ_SP_XL, top: RJ_SP_MD, bottom: RJ_SP_MD })
-          .margin({ right: RJ_SP_MD })
+          .backgroundColor(Color.Transparent)
+          .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_SM, bottom: RJ_SP_SM })
           .onClick(() => {
             this.setSpanStyle(false, true);
           })
         Button('列表', { type: ButtonType.Normal, stateEffect: true })
-          .fontSize(RJ_FS_CALLOUT)
+          .fontSize(RJ_FS_CAPTION)
           .fontColor($r('app.color.rj_text'))
-          .backgroundColor($r('app.color.rj_card'))
-          .borderRadius(4)
-          .padding({ left: RJ_SP_LG, right: RJ_SP_LG, top: RJ_SP_MD, bottom: RJ_SP_MD })
-          .margin({ right: RJ_SP_MD })
+          .backgroundColor(Color.Transparent)
+          .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_SM, bottom: RJ_SP_SM })
           .onClick(() => {
-            this.controller.addTextSpan('- ', { style: { fontSize: 16, fontColor: $r('app.color.rj_text') } });
+            this.controller.addTextSpan('- ', { style: { fontSize: RJ_FS_BODY, fontColor: $r('app.color.rj_text') } });
           })
         Button('图片', { type: ButtonType.Normal, stateEffect: true })
-          .fontSize(RJ_FS_CALLOUT)
+          .fontSize(RJ_FS_CAPTION)
           .fontColor($r('app.color.rj_text'))
-          .backgroundColor($r('app.color.rj_card'))
-          .borderRadius(4)
-          .padding({ left: RJ_SP_LG, right: RJ_SP_LG, top: RJ_SP_MD, bottom: RJ_SP_MD })
+          .backgroundColor(Color.Transparent)
+          .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_SM, bottom: RJ_SP_SM })
           .onClick(() => {
             this.pickImage();
           })
         Blank()
-        // —— 文档操作（低频，文字态让位）——
-        Text(this.words + ' 字')
-          .fontSize(RJ_FS_META)
-          .fontFamily('monospace')
-          .fontColor($r('app.color.rj_text3'))
-          .padding({ right: RJ_SP_MD })
         // 撤销/重做：不可逆的编辑必须有退路（手机上手指一滑就是一段话没了）
         Button('撤销', { type: ButtonType.Normal, stateEffect: true })
           .backgroundColor(Color.Transparent)
-          .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_MD, bottom: RJ_SP_MD })
+          .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_SM, bottom: RJ_SP_SM })
           .fontSize(RJ_FS_CAPTION)
           .fontColor(this.canUndo ? $r('app.color.rj_text') : $r('app.color.rj_line'))
           .enabled(this.canUndo)   // 禁用态交给 Button，读屏也能正确报"已停用"
@@ -639,24 +679,16 @@ struct Editor {
           })
         Button('重做', { type: ButtonType.Normal, stateEffect: true })
           .backgroundColor(Color.Transparent)
-          .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_MD, bottom: RJ_SP_MD })
+          .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_SM, bottom: RJ_SP_SM })
           .fontSize(RJ_FS_CAPTION)
           .fontColor(this.canRedo ? $r('app.color.rj_text') : $r('app.color.rj_line'))
           .enabled(this.canRedo)
           .onClick(() => {
             this.doRedo();
           })
-        Button('保存', { type: ButtonType.Normal, stateEffect: true })
-          .backgroundColor(Color.Transparent)
-          .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_MD, bottom: RJ_SP_MD })
-          .fontSize(RJ_FS_CAPTION)
-          .fontColor($r('app.color.rj_red'))
-          .onClick(() => {
-            this.save();
-          })
       }
       .width('100%')
-      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_MD, bottom: RJ_SP_MD })
+      .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_XS, bottom: RJ_SP_XS })
 
       // 正文
       RichEditor(this.options)
@@ -676,7 +708,7 @@ struct Editor {
          * 去掉解析会让老内容"退化成普通文字"（等于静默改用户的日记）。
          * 所以是"入口上淡化"，不是"能力上取消"。
          */
-        .placeholder('写点什么…', { font: { size: BODY_SIZE }, fontColor: $r('app.color.rj_text3') })
+        .placeholder('写点什么…', { font: { size: RJ_FS_BODY }, fontColor: $r('app.color.rj_text3') })
         .onReady(() => {
           this.setSpanStyle(false, false);
           this.restore();
@@ -695,7 +727,7 @@ struct Editor {
                 .width(64)
                 .height(64)
                 .objectFit(ImageFit.Cover)
-                .borderRadius(2)
+                .borderRadius(RJ_RADIUS_SM)
                 .margin({ right: RJ_SP_MD })
             }
           }, (p: string, index: number) => index + p)
@@ -703,6 +735,27 @@ struct Editor {
         .width('100%')
         .padding({ left: RJ_SP_XXL, top: RJ_SP_MD, bottom: RJ_SP_SM })
       }
+
+      /**
+       * 底部：字数 + 自动保存状态（**右下角、刻意淡化** —— 党哥定的层级：
+       * 它不是给人点的，是给人放心的，不配占头部）。
+       * 键盘弹出时这行会被盖住 —— 正好：打字时不该被状态打扰，收起键盘才看得到。
+       */
+      Row() {
+        Text(this.words + ' 字')
+          .fontSize(RJ_FS_META)
+          .fontFamily('monospace')
+          .fontColor($r('app.color.rj_text3'))
+        Blank()
+        Text(this.saved ? (this.savedAt.length > 0 ? '已保存 ' + this.savedAt : '已保存') : '未保存…')
+          .fontSize(RJ_FS_META)
+          .fontFamily('monospace')
+          .fontColor($r('app.color.rj_text3'))
+          .opacity(this.saved ? 0.7 : 0.4)
+          .animation({ duration: 220, curve: Curve.EaseOut })
+      }
+      .width('100%')
+      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_SM, bottom: RJ_SP_LG })
 
     }
     .width('100%')

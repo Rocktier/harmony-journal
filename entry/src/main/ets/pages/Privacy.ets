@@ -1,5 +1,5 @@
 import { router } from '@kit.ArkUI';
-import { RJ_FS_CALLOUT, RJ_FS_HEADING, RJ_FS_TITLE, RJ_SP_LG, RJ_SP_MD, RJ_SP_SM, RJ_SP_XL, RJ_SP_XXL } from '../theme/RjTokens';
+import { RJ_LH_PARA, RJ_FS_CALLOUT, RJ_FS_HEADING, RJ_FS_TITLE, RJ_SP_LG, RJ_SP_MD, RJ_SP_SM, RJ_SP_VOID, RJ_SP_XL, RJ_SP_XXL } from '../theme/RjTokens';
 
 /**
  * 隐私政策（应用内可看 —— 照 RockReader 的做法）
@@ -104,13 +104,13 @@ struct Privacy {
                 }, (part: InlinePart) => part.text)
               }
                 .fontSize(RJ_FS_CALLOUT)
-                .lineHeight(22)
+                .lineHeight(RJ_LH_PARA)
                 .margin({ bottom: RJ_SP_SM })
                 .width('100%')
             }
           }, (line: string, index: number) => index + line)
         }
-        .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: 40 })
+        .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_VOID })
         .alignItems(HorizontalAlign.Start)
       }
       .layoutWeight(1)

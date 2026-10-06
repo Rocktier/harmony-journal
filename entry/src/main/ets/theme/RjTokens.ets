@@ -31,3 +31,16 @@ export const RJ_SP_LG: number = 12;   /** 相关内容之间的间距 */
 export const RJ_SP_XL: number = 16;   /** 分组之间的间距 */
 export const RJ_SP_XXL: number = 20;  /** 页面左右安全边距（本项目统一 20） */
 export const RJ_SP_XXXL: number = 24; /** 大分区间距 */
+
+/** 大留白阶（vp）—— 页面级"呼吸感"，非组件内间距 */
+export const RJ_SP_VOID: number = 40;      /** 大留白：区块之间 / 空状态 / 列表底部 */
+export const RJ_SP_VOID_L: number = 60;    /** 超大留白：空状态整体上方 */
+export const RJ_SP_TOP_INSET: number = 80; /** 登录页顶部整体下沉 */
+
+/** 圆角阶（vp） */
+export const RJ_RADIUS_SM: number = 2; /** 缩略图等小元素 */
+export const RJ_RADIUS_MD: number = 4; /** 组件内控件（工具栏按键） */
+export const RJ_RADIUS_LG: number = 6; /** 强调型动作按钮（写今天 / 保存） */
+
+/** 行高阶（vp） */
+export const RJ_LH_PARA: number = 22; /** 正文段落行高（CALLOUT 字号下约 1.5 倍） */
