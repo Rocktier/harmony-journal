@@ -13,6 +13,7 @@ import {
 } from '../data/NoteMeta';
 import { NoteStore } from '../data/NoteStore';
 import { getStore } from '../data/NoteStoreHolder';
+import { RJ_FS_BODY, RJ_FS_CALLOUT, RJ_FS_CAPTION, RJ_FS_META, RJ_FS_TITLE, RJ_SP_LG, RJ_SP_MD, RJ_SP_SM, RJ_SP_XL, RJ_SP_XS, RJ_SP_XXL, RJ_SP_XXXL } from '../theme/RjTokens';
 
 /**
  * 主页面：月视图日历 + 时光时间轴 + 搜索 + 「那年今日」
@@ -132,11 +133,11 @@ struct Index {
   @Builder
   private chip(label: string, active: boolean, onTap: () => void) {
     Button(label, { type: ButtonType.Normal, stateEffect: true })
-      .fontSize(11)
+      .fontSize(RJ_FS_CAPTION)
       .fontColor(active ? $r('app.color.rj_text') : $r('app.color.rj_text3'))
       .backgroundColor(active ? $r('app.color.rj_g100') : $r('app.color.rj_card'))
-      .padding({ left: 10, right: 10, top: 5, bottom: 5 })
-      .margin({ right: 8 })
+      .padding({ left: RJ_SP_LG, right: RJ_SP_LG, top: RJ_SP_SM, bottom: RJ_SP_SM })
+      .margin({ right: RJ_SP_MD })
       .onClick(() => {
         onTap();
       })
@@ -275,18 +276,18 @@ struct Index {
       // 顶部：视图切换 + 月份
       Row() {
         Text('Rock私记')
-          .fontSize(20)
+          .fontSize(RJ_FS_TITLE)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.rj_text'))
           .letterSpacing(2)
         if (DEV_SHOW_BADGE) {
           Text('DEV')
-            .fontSize(9)
+            .fontSize(RJ_FS_META)
             .fontFamily('monospace')
             .fontColor($r('app.color.rj_red'))
             .border({ width: 1, color: $r('app.color.rj_red') })
-            .padding({ left: 4, right: 4, top: 1, bottom: 1 })
-            .margin({ left: 8 })
+            .padding({ left: RJ_SP_SM, right: RJ_SP_SM, top: RJ_SP_XS, bottom: RJ_SP_XS })
+            .margin({ left: RJ_SP_MD })
         }
         Blank()
         /**
@@ -306,11 +307,11 @@ struct Index {
           .buttonStyle(ButtonStyleMode.EMPHASIZED)
           .backgroundColor($r('app.color.rj_red'))
           .fontColor($r('app.color.rj_bg'))
-          .fontSize(12)
+          .fontSize(RJ_FS_CAPTION)
           .fontWeight(FontWeight.Bold)
           .borderRadius(6)
-          .padding({ left: 14, right: 14, top: 7, bottom: 7 })
-          .margin({ right: 10 })
+          .padding({ left: RJ_SP_XL, right: RJ_SP_XL, top: RJ_SP_MD, bottom: RJ_SP_MD })
+          .margin({ right: RJ_SP_LG })
           .onClick(() => {
             this.open(todayKey());
           })
@@ -320,68 +321,68 @@ struct Index {
          */
         Button(this.mode === 'month' ? '月' : '时光', { type: ButtonType.Normal, stateEffect: true })
           .buttonStyle(ButtonStyleMode.TEXTUAL)
-          .fontSize(10)
+          .fontSize(RJ_FS_META)
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_text3'))
-          .padding({ left: 8, right: 4, top: 4, bottom: 4 })
-          .margin({ right: 6 })
+          .padding({ left: RJ_SP_MD, right: RJ_SP_SM, top: RJ_SP_SM, bottom: RJ_SP_SM })
+          .margin({ right: RJ_SP_MD })
           .onClick(() => {
             this.mode = this.mode === 'month' ? 'timeline' : 'month';
           })
         // 设置（导出备份的生命线入口 —— 藏深了等于没有）
         Button('设置', { type: ButtonType.Normal, stateEffect: true })
           .buttonStyle(ButtonStyleMode.TEXTUAL)
-          .fontSize(10)
+          .fontSize(RJ_FS_META)
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_text3'))
-          .padding({ left: 4, right: 8, top: 4, bottom: 4 })
+          .padding({ left: RJ_SP_SM, right: RJ_SP_MD, top: RJ_SP_SM, bottom: RJ_SP_SM })
           .onClick(() => {
             router.pushUrl({ url: 'pages/Settings' });
           })
       }
       .width('100%')
-      .padding({ left: 20, right: 20, top: 16, bottom: 8 })
+      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_XL, bottom: RJ_SP_MD })
 
       // 坚持写：连续天数 + 今天写没写（今天还没写用红色，直接推动今天的动作）
       Row() {
         if (this.stats.streak > 0) {
           Text('连续 ' + this.stats.streak + ' 天')
-            .fontSize(10)
+            .fontSize(RJ_FS_META)
             .fontFamily('monospace')
             .fontColor($r('app.color.rj_text3'))
         }
         Text('共 ' + this.stats.total + ' 篇')
-          .fontSize(10)
+          .fontSize(RJ_FS_META)
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_text3'))
-          .margin({ left: 12 })
+          .margin({ left: RJ_SP_LG })
         Blank()
         if (!this.stats.wroteToday) {
           Text('今天还没写')
-            .fontSize(10)
+            .fontSize(RJ_FS_META)
             .fontFamily('monospace')
             .fontColor($r('app.color.rj_red'))
         }
       }
       .width('100%')
-      .padding({ left: 20, right: 20, bottom: 8 })
+      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_MD })
 
       // 备份提醒：生命线靠自觉是不成立的，到期提醒一次（不自动写文件、不重复骚扰）
       if (this.backupDue) {
         Row() {
           Text('距上次备份超过 30 天了 · 去备份')
-            .fontSize(11)
+            .fontSize(RJ_FS_CAPTION)
             .fontColor($r('app.color.rj_red'))
             .layoutWeight(1)
           Text('去备份 ›')
-            .fontSize(11)
+            .fontSize(RJ_FS_CAPTION)
             .fontColor($r('app.color.rj_red'))
             .onClick(() => {
               router.pushUrl({ url: 'pages/Settings' });
             })
         }
         .width('100%')
-        .padding({ left: 20, right: 20, bottom: 8 })
+        .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_MD })
       }
 
       // 筛选条：数据全在索引里 ⇒ 零 IO 成本；几百篇之后这是"还能不能用"的分界线
@@ -407,7 +408,7 @@ struct Index {
         }
       }
       .width('100%')
-      .padding({ left: 20, right: 20, bottom: 4 })
+      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_SM })
 
       if (this.allTags.length > 0 && this.tagsExpanded) {
         Scroll() {
@@ -423,17 +424,17 @@ struct Index {
         .scrollable(ScrollDirection.Horizontal)
         .scrollBar(BarState.Off)
         .width('100%')
-        .padding({ left: 20, right: 20, bottom: 6 })
+        .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_MD })
       }
 
       // 搜索
       TextInput({ placeholder: '搜日记', text: this.query })
-        .fontSize(13)
+        .fontSize(RJ_FS_CALLOUT)
         .backgroundColor($r('app.color.rj_card'))
         .fontColor($r('app.color.rj_text'))
         .placeholderColor($r('app.color.rj_text3'))
         .height(38)
-        .margin({ left: 20, right: 20, bottom: 8 })
+        .margin({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_MD })
         .onChange((v: string) => {
           this.query = v;
           if (v.length > 0) {
@@ -447,35 +448,35 @@ struct Index {
       if (this.query.length === 0 && this.recall.length > 0) {
         Column() {
           Text('那年今日')
-            .fontSize(10)
+            .fontSize(RJ_FS_META)
             .fontFamily('monospace')
             .fontColor($r('app.color.rj_text3'))
             .width('100%')
-            .padding({ bottom: 6 })
+            .padding({ bottom: RJ_SP_MD })
           ForEach(this.recall, (card: RecallCard) => {
             Row() {
               Column() {
                 Row() {
                   Text(card.years)
-                    .fontSize(10)
+                    .fontSize(RJ_FS_META)
                     .fontFamily('monospace')
                     .fontColor($r('app.color.rj_red'))
                   Text(card.meta.date)
-                    .fontSize(10)
+                    .fontSize(RJ_FS_META)
                     .fontFamily('monospace')
                     .fontColor($r('app.color.rj_text3'))
-                    .margin({ left: 8 })
+                    .margin({ left: RJ_SP_MD })
                   if (this.moodEmoji(card.meta).length > 0) {
                     Text(this.moodEmoji(card.meta))
-                      .fontSize(12)
-                      .margin({ left: 8 })
+                      .fontSize(RJ_FS_CAPTION)
+                      .margin({ left: RJ_SP_MD })
                   }
                 }
                 if (card.preview.length > 0) {
                   Text(card.preview)
-                    .fontSize(13)
+                    .fontSize(RJ_FS_CALLOUT)
                     .fontColor($r('app.color.rj_text'))
-                    .margin({ top: 3 })
+                    .margin({ top: RJ_SP_SM })
                     .maxLines(2)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                 }
@@ -484,14 +485,14 @@ struct Index {
               .layoutWeight(1)
             }
             .width('100%')
-            .padding({ top: 8, bottom: 8 })
+            .padding({ top: RJ_SP_MD, bottom: RJ_SP_MD })
             .onClick(() => {
               this.open(card.meta.date, card.meta.id);
             })
           }, (card: RecallCard) => card.meta.id)
         }
         .width('100%')
-        .padding({ left: 20, right: 20, top: 4, bottom: 10 })
+        .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_SM, bottom: RJ_SP_LG })
         .border({ width: { bottom: 1 }, color: $r('app.color.rj_line') })
       }
 
@@ -499,7 +500,7 @@ struct Index {
         // 搜索结果
         if (this.hits.length === 0) {
           Text('没有找到')
-            .fontSize(12)
+            .fontSize(RJ_FS_CAPTION)
             .fontColor($r('app.color.rj_text3'))
             .margin({ top: 40 })
         }
@@ -508,18 +509,18 @@ struct Index {
             ListItem() {
               Column() {
                 Text(hit.date)
-                  .fontSize(11)
+                  .fontSize(RJ_FS_CAPTION)
                   .fontFamily('monospace')
                   .fontColor($r('app.color.rj_text3'))
                 Text(hit.snippet)
-                  .fontSize(14)
+                  .fontSize(RJ_FS_CALLOUT)
                   .fontColor($r('app.color.rj_text'))
-                  .margin({ top: 4 })
+                  .margin({ top: RJ_SP_SM })
                   .maxLines(2)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
               }
               .alignItems(HorizontalAlign.Start)
-              .padding({ left: 20, right: 20, top: 12, bottom: 12 })
+              .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
               .width('100%')
             }
             .onClick(() => {
@@ -533,26 +534,26 @@ struct Index {
         // 月视图
         Row() {
           Text('<')
-            .fontSize(16)
+            .fontSize(RJ_FS_BODY)
             .fontColor($r('app.color.rj_text2'))
             .onClick(() => {
               this.monthKey = shiftMonth(this.monthKey, -1);
             })
-            .padding(8)
+            .padding(RJ_SP_MD)
           Text(this.monthKey)
-            .fontSize(14)
+            .fontSize(RJ_FS_CALLOUT)
             .fontFamily('monospace')
             .fontColor($r('app.color.rj_text'))
             .letterSpacing(2)
           Text('>')
-            .fontSize(16)
+            .fontSize(RJ_FS_BODY)
             .fontColor($r('app.color.rj_text2'))
             .onClick(() => {
               this.monthKey = shiftMonth(this.monthKey, 1);
             })
-            .padding(8)
+            .padding(RJ_SP_MD)
         }
-        .margin({ bottom: 8 })
+        .margin({ bottom: RJ_SP_MD })
 
         // 6×7 网格
         Grid() {
@@ -560,13 +561,13 @@ struct Index {
             GridItem() {
               Stack({ alignContent: Alignment.TopEnd }) {
                 Text(cell.day.toString())
-                  .fontSize(13)
+                  .fontSize(RJ_FS_CALLOUT)
                   .fontFamily('monospace')
                   .fontColor(cell.inMonth ? $r('app.color.rj_text') : $r('app.color.rj_text3'))
                 if (cell.hasNote) {
                   Circle({ width: 8, height: 8 })
                     .fill($r('app.color.rj_red'))
-                    .margin({ top: 3, right: 8 })
+                    .margin({ top: RJ_SP_SM, right: RJ_SP_MD })
                 }
               }
               .width('100%')
@@ -581,14 +582,14 @@ struct Index {
         // 行数按当月实际需要（10 月只有 5 行，固定 6 行会白占 1/3 屏）
         .rowsTemplate(this.rowTemplate())
         .height(this.calRows() * 50)
-        .padding({ left: 16, right: 16 })
+        .padding({ left: RJ_SP_XL, right: RJ_SP_XL })
 
         // 本月日记列表（**只列这个月** —— 顶部月份导航与列表范围必须一致，见 monthRows）
         if (this.monthRows().length === 0) {
           Text('这个月还没有日记')
-            .fontSize(12)
+            .fontSize(RJ_FS_CAPTION)
             .fontColor($r('app.color.rj_text3'))
-            .margin({ top: 24 })
+            .margin({ top: RJ_SP_XXXL })
         }
         List() {
           ForEach(this.monthRows(), (row: TimelineRow) => {
@@ -596,30 +597,30 @@ struct Index {
               Column() {
                 Row() {
                   Text(row.meta !== null ? row.meta.date : '')
-                    .fontSize(12)
+                    .fontSize(RJ_FS_CAPTION)
                     .fontFamily('monospace')
                     .fontColor($r('app.color.rj_text2'))
                   if (row.showTime && row.meta !== null) {
                     Text(timeOfDay(row.meta.createdAt))
-                      .fontSize(10)
+                      .fontSize(RJ_FS_META)
                       .fontFamily('monospace')
                       .fontColor($r('app.color.rj_text3'))
-                      .margin({ left: 8 })
+                      .margin({ left: RJ_SP_MD })
                   }
                   if (row.meta !== null && this.moodEmoji(row.meta).length > 0) {
                     Text(this.moodEmoji(row.meta))
-                      .fontSize(14)
-                      .margin({ left: 10 })
+                      .fontSize(RJ_FS_CALLOUT)
+                      .margin({ left: RJ_SP_LG })
                   }
                   if (row.meta !== null && row.meta.favorite) {
                     Text('★')
-                      .fontSize(14)
+                      .fontSize(RJ_FS_CALLOUT)
                       .fontColor($r('app.color.rj_red'))
-                      .margin({ left: 10 })
+                      .margin({ left: RJ_SP_LG })
                   }
                   Blank()
                   Text(row.meta !== null ? row.meta.words + ' 字' : '')
-                    .fontSize(10)
+                    .fontSize(RJ_FS_META)
                     .fontFamily('monospace')
                     .fontColor($r('app.color.rj_text3'))
                 }
@@ -627,23 +628,23 @@ struct Index {
                 // 标签：用户给的主题词，找得回来的第二条路
                 if (row.meta !== null && row.meta.tags.length > 0) {
                   Text('#' + row.meta.tags.join(' #'))
-                    .fontSize(10)
+                    .fontSize(RJ_FS_META)
                     .fontFamily('monospace')
                     .fontColor($r('app.color.rj_text3'))
-                    .margin({ top: 3 })
+                    .margin({ top: RJ_SP_SM })
                 }
                 // 摘要来自索引缓存 ⇒ 零额外 IO，月视图也能"看到自己写过的话"
                 if (row.meta !== null && row.meta.preview.length > 0) {
                   Text(row.meta.preview)
-                    .fontSize(13)
+                    .fontSize(RJ_FS_CALLOUT)
                     .fontColor($r('app.color.rj_text'))
-                    .margin({ top: 4 })
+                    .margin({ top: RJ_SP_SM })
                     .maxLines(2)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                 }
               }
               .alignItems(HorizontalAlign.Start)
-              .padding({ left: 20, right: 20, top: 12, bottom: 12 })
+              .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
             }
             .onClick(() => {
               if (row.meta !== null) {
@@ -659,12 +660,12 @@ struct Index {
         if (!this.loaded || this.metas.length === 0) {
           Column() {
             Text('还没有日记')
-              .fontSize(14)
+              .fontSize(RJ_FS_CALLOUT)
               .fontColor($r('app.color.rj_text3'))
             Text('点下面的按钮，写今天')
-              .fontSize(11)
+              .fontSize(RJ_FS_CAPTION)
               .fontColor($r('app.color.rj_text3'))
-              .margin({ top: 6 })
+              .margin({ top: RJ_SP_MD })
           }
           .margin({ top: 60 })
         }
@@ -674,58 +675,58 @@ struct Index {
             ListItem() {
               if (row.kind === 'header') {
                 Text(row.monthKey)
-                  .fontSize(10)
+                  .fontSize(RJ_FS_META)
                   .fontFamily('monospace')
                   .fontColor($r('app.color.rj_text3'))
                   .width('100%')
-                  .padding({ top: 14, bottom: 6 })
+                  .padding({ top: RJ_SP_XL, bottom: RJ_SP_MD })
               } else if (row.meta !== null) {
                 Row() {
                   Column() {
                     Row() {
                       Text(row.meta.date)
-                        .fontSize(12)
+                        .fontSize(RJ_FS_CAPTION)
                         .fontFamily('monospace')
                         .fontColor($r('app.color.rj_text2'))
                       // 同一天多篇时补个时间，否则几行日期一模一样、看不出是几篇
                       if (row.showTime) {
                         Text(timeOfDay(row.meta.createdAt))
-                          .fontSize(10)
+                          .fontSize(RJ_FS_META)
                           .fontFamily('monospace')
                           .fontColor($r('app.color.rj_text3'))
-                          .margin({ left: 8 })
+                          .margin({ left: RJ_SP_MD })
                       }
                       if (this.moodEmoji(row.meta).length > 0) {
                         Text(this.moodEmoji(row.meta))
-                          .fontSize(13)
-                          .margin({ left: 8 })
+                          .fontSize(RJ_FS_CALLOUT)
+                          .margin({ left: RJ_SP_MD })
                       }
                       if (row.meta.favorite) {
                         Text('★')
-                          .fontSize(13)
+                          .fontSize(RJ_FS_CALLOUT)
                           .fontColor($r('app.color.rj_red'))
-                          .margin({ left: 8 })
+                          .margin({ left: RJ_SP_MD })
                       }
                       Blank()
                       Text(row.meta.words + ' 字')
-                        .fontSize(10)
+                        .fontSize(RJ_FS_META)
                         .fontFamily('monospace')
                         .fontColor($r('app.color.rj_text3'))
                     }
                     .width('100%')
                     if (row.meta.tags.length > 0) {
                       Text('#' + row.meta.tags.join(' #'))
-                        .fontSize(10)
+                        .fontSize(RJ_FS_META)
                         .fontFamily('monospace')
                         .fontColor($r('app.color.rj_text3'))
-                        .margin({ top: 3 })
+                        .margin({ top: RJ_SP_SM })
                     }
                     // 摘要来自索引缓存（零额外 IO）；老数据没有 ⇒ 这一行就没有，不硬凑
                     if (row.meta.preview.length > 0) {
                       Text(row.meta.preview)
-                        .fontSize(13)
+                        .fontSize(RJ_FS_CALLOUT)
                         .fontColor($r('app.color.rj_text'))
-                        .margin({ top: 4 })
+                        .margin({ top: RJ_SP_SM })
                         .maxLines(2)
                         .textOverflow({ overflow: TextOverflow.Ellipsis })
                     }
@@ -739,14 +740,14 @@ struct Index {
                       .height(48)
                       .objectFit(ImageFit.Cover)
                       .borderRadius(2)
-                      .margin({ left: 10 })
+                      .margin({ left: RJ_SP_LG })
                   }
                 }
                 .width('100%')
-                .padding({ top: 12, bottom: 12 })
+                .padding({ top: RJ_SP_LG, bottom: RJ_SP_LG })
               }
             }
-            .padding({ left: 20, right: 20 })
+            .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL })
             .onClick(() => {
               if (row.meta !== null) {
                 this.open(row.meta.date, row.meta.id);

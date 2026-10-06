@@ -12,6 +12,7 @@ import {
   BackupItem, EXT_MD, EXT_TXT, backupFileName, buildBackup, parseBackup, readableFileName,
   toMarkdown, toPlainText, utf8Encode
 } from '../data/BackupService';
+import { RJ_FS_CALLOUT, RJ_FS_CAPTION, RJ_FS_HEADING, RJ_FS_META, RJ_FS_TITLE, RJ_SP_LG, RJ_SP_MD, RJ_SP_SM, RJ_SP_XL, RJ_SP_XXL, RJ_SP_XXXL } from '../theme/RjTokens';
 
 /**
  * 设置页（Phase 7 备份 + 关于）
@@ -157,31 +158,31 @@ struct Settings {
     Column() {
       Row() {
         Text('<')
-          .fontSize(18)
+          .fontSize(RJ_FS_TITLE)
           .fontColor($r('app.color.rj_text2'))
           .onClick(() => {
             router.back();
           })
-          .padding({ right: 12 })
+          .padding({ right: RJ_SP_LG })
         Text('设置')
-          .fontSize(15)
+          .fontSize(RJ_FS_HEADING)
           .fontColor($r('app.color.rj_text'))
           .letterSpacing(2)
       }
       .width('100%')
-      .padding({ left: 20, right: 20, top: 16, bottom: 12 })
+      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_XL, bottom: RJ_SP_LG })
 
       // 备份（生命线）
       Text('备份')
-        .fontSize(10.5)
+        .fontSize(RJ_FS_META)
         .fontFamily('monospace')
         .fontColor($r('app.color.rj_text3'))
         .width('100%')
-        .padding({ left: 20, bottom: 6 })
+        .padding({ left: RJ_SP_XXL, bottom: RJ_SP_MD })
 
       Row() {
         Text('导出加密备份')
-          .fontSize(14)
+          .fontSize(RJ_FS_CALLOUT)
           .fontColor($r('app.color.rj_text'))
           .onClick(() => {
             this.doExport();
@@ -191,11 +192,11 @@ struct Settings {
           .fontColor($r('app.color.rj_text3'))
       }
       .width('100%')
-      .padding({ left: 20, right: 20, top: 12, bottom: 12 })
+      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
 
       Row() {
         Text('从备份导入')
-          .fontSize(14)
+          .fontSize(RJ_FS_CALLOUT)
           .fontColor($r('app.color.rj_text'))
           .onClick(() => {
             this.doImport();
@@ -205,12 +206,12 @@ struct Settings {
           .fontColor($r('app.color.rj_text3'))
       }
       .width('100%')
-      .padding({ left: 20, right: 20, top: 12, bottom: 12 })
+      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
 
       // 可读导出（数据自主：不把用户锁死在本 App 里）
       Row() {
         Text('导出为文本 TXT')
-          .fontSize(14)
+          .fontSize(RJ_FS_CALLOUT)
           .fontColor($r('app.color.rj_text'))
           .onClick(() => {
             this.doExportReadable(false);
@@ -220,11 +221,11 @@ struct Settings {
           .fontColor($r('app.color.rj_text3'))
       }
       .width('100%')
-      .padding({ left: 20, right: 20, top: 12, bottom: 12 })
+      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
 
       Row() {
         Text('导出为 Markdown')
-          .fontSize(14)
+          .fontSize(RJ_FS_CALLOUT)
           .fontColor($r('app.color.rj_text'))
           .onClick(() => {
             this.doExportReadable(true);
@@ -234,81 +235,81 @@ struct Settings {
           .fontColor($r('app.color.rj_text3'))
       }
       .width('100%')
-      .padding({ left: 20, right: 20, top: 12, bottom: 12 })
+      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
 
       // 告知要说全：明文风险 **和** 图片不包含在内。
       // ⚠️ 只说"明文"是不够的 —— 用户会以为导出=全部，迁走后才发现照片全丢，
       //    那属于"承诺不一致"，比缺功能更伤信任。图片请用加密备份。
       Text('TXT / Markdown 是明文、不加密，且不含图片（只留占位）—— 图片请用上面的加密备份')
-        .fontSize(10)
+        .fontSize(RJ_FS_META)
         .fontColor($r('app.color.rj_red'))
         .width('100%')
-        .padding({ left: 20, right: 20, bottom: 12 })
+        .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_LG })
 
       Text('共 ' + this.noteCount + ' 篇 · 上次备份 ' + this.lastBackup)
-        .fontSize(10)
+        .fontSize(RJ_FS_META)
         .fontColor($r('app.color.rj_text3'))
         .width('100%')
-        .padding({ left: 20, top: 4, bottom: 16 })
+        .padding({ left: RJ_SP_XXL, top: RJ_SP_SM, bottom: RJ_SP_XL })
 
       // 统计（Diarium 的 diary statistics 同款；全部从内存索引算，零 IO）
       Text('统计')
-        .fontSize(10.5)
+        .fontSize(RJ_FS_META)
         .fontFamily('monospace')
         .fontColor($r('app.color.rj_text3'))
         .width('100%')
-        .padding({ left: 20, bottom: 6 })
+        .padding({ left: RJ_SP_XXL, bottom: RJ_SP_MD })
 
       Row() {
         Text('写过日记的天数')
-          .fontSize(14)
+          .fontSize(RJ_FS_CALLOUT)
           .fontColor($r('app.color.rj_text'))
         Blank()
         Text(this.stats.days + ' 天')
-          .fontSize(12)
+          .fontSize(RJ_FS_CAPTION)
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_text3'))
       }
       .width('100%')
-      .padding({ left: 20, right: 20, top: 12, bottom: 12 })
+      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
 
       Row() {
         Text('累计字数')
-          .fontSize(14)
+          .fontSize(RJ_FS_CALLOUT)
           .fontColor($r('app.color.rj_text'))
         Blank()
         Text(this.stats.words + ' 字')
-          .fontSize(12)
+          .fontSize(RJ_FS_CAPTION)
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_text3'))
       }
       .width('100%')
-      .padding({ left: 20, right: 20, top: 12, bottom: 12 })
+      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
 
       Row() {
         Text('最长连续')
-          .fontSize(14)
+          .fontSize(RJ_FS_CALLOUT)
           .fontColor($r('app.color.rj_text'))
         Blank()
         Text(this.stats.longest + ' 天')
-          .fontSize(12)
+          .fontSize(RJ_FS_CAPTION)
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_text3'))
       }
       .width('100%')
-      .padding({ left: 20, right: 20, top: 12, bottom: 12 })
+      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
 
       // 关于
       Text('关于')
-        .fontSize(10.5)
+        .fontSize(RJ_FS_META)
         .fontFamily('monospace')
         .fontColor($r('app.color.rj_text3'))
         .width('100%')
-        .padding({ left: 20, bottom: 6 })
+        .padding({ left: RJ_SP_XXL, bottom: RJ_SP_MD })
 
       Row() {
         Text('隐私政策')
-          .fontSize(14)
+          .fontSize(RJ_FS_CALLOUT)
           .fontColor($r('app.color.rj_text'))
           .onClick(() => {
             router.pushUrl({ url: 'pages/Privacy' });
@@ -318,40 +319,40 @@ struct Settings {
           .fontColor($r('app.color.rj_text3'))
       }
       .width('100%')
-      .padding({ left: 20, right: 20, top: 12, bottom: 12 })
+      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
 
       Row() {
         Text('版本')
-          .fontSize(14)
+          .fontSize(RJ_FS_CALLOUT)
           .fontColor($r('app.color.rj_text'))
         Blank()
         Text(APP_VERSION)
-          .fontSize(12)
+          .fontSize(RJ_FS_CAPTION)
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_text3'))
       }
       .width('100%')
-      .padding({ left: 20, right: 20, top: 12, bottom: 12 })
+      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
 
       if (this.toast.length > 0) {
         Text(this.toast)
-          .fontSize(12)
+          .fontSize(RJ_FS_CAPTION)
           .fontColor($r('app.color.rj_red'))
-          .margin({ top: 12 })
+          .margin({ top: RJ_SP_LG })
       }
 
       Blank()
 
       Text(APP_NAME_CN + ' · 数据只在这台设备上')
-        .fontSize(10)
+        .fontSize(RJ_FS_META)
         .fontColor($r('app.color.rj_text3'))
-        .margin({ bottom: 8 })
+        .margin({ bottom: RJ_SP_MD })
       if (DEV_SHOW_BADGE) {
         Text('开发模式：未启用上锁（提审前务必关闭）')
-          .fontSize(9)
+          .fontSize(RJ_FS_META)
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_red'))
-          .margin({ bottom: 28 })
+          .margin({ bottom: RJ_SP_XXXL })
       }
     }
     .width('100%')

@@ -14,6 +14,7 @@ import { NoteStore } from '../data/NoteStore';
 import { getStore } from '../data/NoteStoreHolder';
 import { RawSpan } from '../data/NoteBlocks';
 import { mergeSpans } from '../data/NoteBlocks';
+import { RJ_FS_BODY, RJ_FS_CALLOUT, RJ_FS_CAPTION, RJ_FS_HEADING, RJ_FS_META, RJ_FS_TITLE, RJ_SP_LG, RJ_SP_MD, RJ_SP_SM, RJ_SP_XL, RJ_SP_XS, RJ_SP_XXL } from '../theme/RjTokens';
 
 /**
  * 编辑页（Phase 4）：所见即所得
@@ -441,24 +442,24 @@ struct Editor {
       // 头：日期 + 返回
       Row() {
         Text('<')
-          .fontSize(18)
+          .fontSize(RJ_FS_TITLE)
           .fontColor($r('app.color.rj_text2'))
           .onClick(() => {
             this.save();
             router.back();
           })
-          .padding({ right: 12 })
+          .padding({ right: RJ_SP_LG })
         Text(this.date)
-          .fontSize(15)
+          .fontSize(RJ_FS_HEADING)
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_text'))
           .letterSpacing(2)
         // 收藏：重要的几篇★住，以后一眼能挑出来
         Text(this.favorite ? '★' : '☆')
-          .fontSize(16)
+          .fontSize(RJ_FS_BODY)
           .fontColor(this.favorite ? $r('app.color.rj_red') : $r('app.color.rj_text3'))
-          .margin({ left: 10 })
-          .padding(4)
+          .margin({ left: RJ_SP_LG })
+          .padding(RJ_SP_SM)
           .onClick(() => {
             this.favorite = !this.favorite;
             this.save();
@@ -466,14 +467,14 @@ struct Editor {
         Blank()
         // 保存状态：带时间戳 + 一次极短的透明度过渡（"看起来快"也是快）
         Text(this.saved ? (this.savedAt.length > 0 ? '已保存 ' + this.savedAt : '已保存') : '未保存…')
-          .fontSize(10)
+          .fontSize(RJ_FS_META)
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_text3'))
           .opacity(this.saved ? 1.0 : 0.45)
           .animation({ duration: 220, curve: Curve.EaseOut })
       }
       .width('100%')
-      .padding({ left: 20, right: 20, top: 16, bottom: 10 })
+      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_XL, bottom: RJ_SP_LG })
 
       /**
        * 这天的其它篇目 / 再来一篇
@@ -487,51 +488,51 @@ struct Editor {
         Row() {
           if (this.dayEntries.length > 1) {
             Text('本日 ' + this.dayEntries.length + ' 篇')
-              .fontSize(10)
+              .fontSize(RJ_FS_META)
               .fontFamily('monospace')
               .fontColor($r('app.color.rj_text3'))
           }
           Blank()
           if (this.dayEntries.length > 1) {
             Text('‹')
-              .fontSize(16)
+              .fontSize(RJ_FS_BODY)
               .fontColor(this.dayIndex > 0 ? $r('app.color.rj_text2') : $r('app.color.rj_line'))
-              .padding({ left: 10, right: 10 })
+              .padding({ left: RJ_SP_LG, right: RJ_SP_LG })
               .onClick(() => {
                 this.switchTo(-1);
               })
             Text((this.dayIndex < 0 ? this.dayEntries.length : this.dayIndex + 1) + '/' + this.dayEntries.length)
-              .fontSize(11)
+              .fontSize(RJ_FS_CAPTION)
               .fontFamily('monospace')
               .fontColor($r('app.color.rj_text2'))
             Text('›')
-              .fontSize(16)
+              .fontSize(RJ_FS_BODY)
               .fontColor(this.dayIndex >= 0 && this.dayIndex < this.dayEntries.length - 1
                 ? $r('app.color.rj_text2') : $r('app.color.rj_line'))
-              .padding({ left: 10, right: 10 })
+              .padding({ left: RJ_SP_LG, right: RJ_SP_LG })
               .onClick(() => {
                 this.switchTo(1);
               })
           }
           Text('＋')
-            .fontSize(14)
+            .fontSize(RJ_FS_CALLOUT)
             .fontColor($r('app.color.rj_text'))
             .fontWeight(FontWeight.Bold)
-            .padding({ left: 12 })
+            .padding({ left: RJ_SP_LG })
             .onClick(() => {
               this.addAnotherHere();
             })
         }
         .width('100%')
-        .padding({ left: 20, right: 20, top: 2, bottom: 4 })
+        .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_XS, bottom: RJ_SP_SM })
       }
 
       // 心情
       Row() {
         ForEach(MOODS, (m: Mood) => {
           Text(m.emoji)
-            .fontSize(20)
-            .padding({ left: 6, right: 6 })
+            .fontSize(RJ_FS_TITLE)
+            .padding({ left: RJ_SP_MD, right: RJ_SP_MD })
             .opacity(this.mood === m.id ? 1 : 0.35)
             .onClick(() => {
               this.mood = this.mood === m.id ? '' : m.id;
@@ -543,16 +544,16 @@ struct Editor {
         }, (m: Mood) => m.id)
       }
       .width('100%')
-      .padding({ left: 14, bottom: 8 })
+      .padding({ left: RJ_SP_XL, bottom: RJ_SP_MD })
 
       // 标签（逗号分隔；留空即无标签）
       TextInput({ placeholder: '标签（逗号分隔，如：工作, 家人）', text: this.tagsText })
-        .fontSize(12)
+        .fontSize(RJ_FS_CAPTION)
         .backgroundColor($r('app.color.rj_card'))
         .fontColor($r('app.color.rj_text'))
         .placeholderColor($r('app.color.rj_text3'))
         .height(34)
-        .margin({ left: 20, right: 20, bottom: 6 })
+        .margin({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_MD })
         .onChange((v: string) => {
           this.tagsText = v;
           this.saved = false;
@@ -579,58 +580,58 @@ struct Editor {
       Row() {
         // —— 富文本（高频，抬优先级）——
         Button('B', { type: ButtonType.Normal, stateEffect: true })
-          .fontSize(14)
+          .fontSize(RJ_FS_CALLOUT)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.rj_text'))
           .backgroundColor($r('app.color.rj_card'))
           .borderRadius(4)
-          .padding({ left: 13, right: 13, top: 7, bottom: 7 })
-          .margin({ right: 6 })
+          .padding({ left: RJ_SP_LG, right: RJ_SP_LG, top: RJ_SP_MD, bottom: RJ_SP_MD })
+          .margin({ right: RJ_SP_MD })
           .onClick(() => {
             this.setSpanStyle(true, false);
           })
         Button('I', { type: ButtonType.Normal, stateEffect: true })
-          .fontSize(14)
+          .fontSize(RJ_FS_CALLOUT)
           .fontStyle(FontStyle.Italic)
           .fontColor($r('app.color.rj_text'))
           .backgroundColor($r('app.color.rj_card'))
           .borderRadius(4)
-          .padding({ left: 15, right: 15, top: 7, bottom: 7 })
-          .margin({ right: 6 })
+          .padding({ left: RJ_SP_XL, right: RJ_SP_XL, top: RJ_SP_MD, bottom: RJ_SP_MD })
+          .margin({ right: RJ_SP_MD })
           .onClick(() => {
             this.setSpanStyle(false, true);
           })
         Button('列表', { type: ButtonType.Normal, stateEffect: true })
-          .fontSize(13)
+          .fontSize(RJ_FS_CALLOUT)
           .fontColor($r('app.color.rj_text'))
           .backgroundColor($r('app.color.rj_card'))
           .borderRadius(4)
-          .padding({ left: 11, right: 11, top: 7, bottom: 7 })
-          .margin({ right: 6 })
+          .padding({ left: RJ_SP_LG, right: RJ_SP_LG, top: RJ_SP_MD, bottom: RJ_SP_MD })
+          .margin({ right: RJ_SP_MD })
           .onClick(() => {
             this.controller.addTextSpan('- ', { style: { fontSize: 16, fontColor: $r('app.color.rj_text') } });
           })
         Button('图片', { type: ButtonType.Normal, stateEffect: true })
-          .fontSize(13)
+          .fontSize(RJ_FS_CALLOUT)
           .fontColor($r('app.color.rj_text'))
           .backgroundColor($r('app.color.rj_card'))
           .borderRadius(4)
-          .padding({ left: 11, right: 11, top: 7, bottom: 7 })
+          .padding({ left: RJ_SP_LG, right: RJ_SP_LG, top: RJ_SP_MD, bottom: RJ_SP_MD })
           .onClick(() => {
             this.pickImage();
           })
         Blank()
         // —— 文档操作（低频，文字态让位）——
         Text(this.words + ' 字')
-          .fontSize(10)
+          .fontSize(RJ_FS_META)
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_text3'))
-          .padding({ right: 6 })
+          .padding({ right: RJ_SP_MD })
         // 撤销/重做：不可逆的编辑必须有退路（手机上手指一滑就是一段话没了）
         Button('撤销', { type: ButtonType.Normal, stateEffect: true })
           .backgroundColor(Color.Transparent)
-          .padding({ left: 6, right: 6, top: 7, bottom: 7 })
-          .fontSize(12)
+          .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_MD, bottom: RJ_SP_MD })
+          .fontSize(RJ_FS_CAPTION)
           .fontColor(this.canUndo ? $r('app.color.rj_text') : $r('app.color.rj_line'))
           .enabled(this.canUndo)   // 禁用态交给 Button，读屏也能正确报"已停用"
           .onClick(() => {
@@ -638,8 +639,8 @@ struct Editor {
           })
         Button('重做', { type: ButtonType.Normal, stateEffect: true })
           .backgroundColor(Color.Transparent)
-          .padding({ left: 6, right: 6, top: 7, bottom: 7 })
-          .fontSize(12)
+          .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_MD, bottom: RJ_SP_MD })
+          .fontSize(RJ_FS_CAPTION)
           .fontColor(this.canRedo ? $r('app.color.rj_text') : $r('app.color.rj_line'))
           .enabled(this.canRedo)
           .onClick(() => {
@@ -647,15 +648,15 @@ struct Editor {
           })
         Button('保存', { type: ButtonType.Normal, stateEffect: true })
           .backgroundColor(Color.Transparent)
-          .padding({ left: 6, right: 6, top: 7, bottom: 7 })
-          .fontSize(12)
+          .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_MD, bottom: RJ_SP_MD })
+          .fontSize(RJ_FS_CAPTION)
           .fontColor($r('app.color.rj_red'))
           .onClick(() => {
             this.save();
           })
       }
       .width('100%')
-      .padding({ left: 20, right: 20, top: 6, bottom: 8 })
+      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_MD, bottom: RJ_SP_MD })
 
       // 正文
       RichEditor(this.options)
@@ -683,7 +684,7 @@ struct Editor {
         .onDidChange(() => {
           this.onContentChanged();
         })
-        .padding({ left: 20, right: 20, top: 4 })
+        .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_SM })
 
       // 已插入的图片（缩略图；正文里只存加密文件的引用）
       if (this.imgPaths.length > 0) {
@@ -695,12 +696,12 @@ struct Editor {
                 .height(64)
                 .objectFit(ImageFit.Cover)
                 .borderRadius(2)
-                .margin({ right: 8 })
+                .margin({ right: RJ_SP_MD })
             }
           }, (p: string, index: number) => index + p)
         }
         .width('100%')
-        .padding({ left: 20, top: 8, bottom: 4 })
+        .padding({ left: RJ_SP_XXL, top: RJ_SP_MD, bottom: RJ_SP_SM })
       }
 
     }

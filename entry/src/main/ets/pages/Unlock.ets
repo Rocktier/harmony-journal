@@ -2,6 +2,7 @@ import { router } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 import { unlockWith, setupVault, unlockWithBiometric, hasBiometric, isFirstRun } from '../data/NoteStoreHolder';
+import { RJ_FS_CALLOUT, RJ_FS_CAPTION, RJ_FS_DISPLAY, RJ_FS_HEADING, RJ_FS_META, RJ_SP_LG, RJ_SP_MD, RJ_SP_SM, RJ_SP_XL } from '../theme/RjTokens';
 
 /**
  * 解锁页（Phase 8 / 决策 4）：替代开发期 DEV_UNLOCK_BYPASS。
@@ -87,24 +88,24 @@ struct Unlock {
   build() {
     Column() {
       Text('Rock私记')
-        .fontSize(22)
+        .fontSize(RJ_FS_DISPLAY)
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.rj_text'))
         .letterSpacing(2)
-        .margin({ top: 80, bottom: 8 })
+        .margin({ top: 80, bottom: RJ_SP_MD })
       Text(this.firstRun ? '设置主密码' : '输入主密码解锁')
-        .fontSize(13)
+        .fontSize(RJ_FS_CALLOUT)
         .fontColor($r('app.color.rj_text2'))
         .margin({ bottom: 40 })
 
       TextInput({ placeholder: '主密码', text: this.password })
         .type(InputType.Password)
-        .fontSize(14)
+        .fontSize(RJ_FS_CALLOUT)
         .backgroundColor($r('app.color.rj_card'))
         .fontColor($r('app.color.rj_text'))
         .width('80%')
         .height(44)
-        .margin({ bottom: 12 })
+        .margin({ bottom: RJ_SP_LG })
         .onChange((v: string) => {
           this.password = v;
           this.error = '';
@@ -113,12 +114,12 @@ struct Unlock {
       if (this.firstRun) {
         TextInput({ placeholder: '再次输入', text: this.confirm })
           .type(InputType.Password)
-          .fontSize(14)
+          .fontSize(RJ_FS_CALLOUT)
           .backgroundColor($r('app.color.rj_card'))
           .fontColor($r('app.color.rj_text'))
           .width('80%')
           .height(44)
-          .margin({ bottom: 12 })
+          .margin({ bottom: RJ_SP_LG })
           .onChange((v: string) => {
             this.confirm = v;
           })
@@ -126,36 +127,36 @@ struct Unlock {
 
       if (!this.firstRun && this.bioAvailable) {
         Button('使用指纹 / 面容解锁')
-          .fontSize(15)
+          .fontSize(RJ_FS_HEADING)
           .backgroundColor($r('app.color.rj_accent'))
           .fontColor($r('app.color.rj_bg'))
           .width('80%')
           .height(46)
-          .margin({ top: 8, bottom: 4 })
+          .margin({ top: RJ_SP_MD, bottom: RJ_SP_SM })
           .onClick(() => {
             this.doBio();
           })
       }
 
       Button(this.firstRun ? '设置并进入' : '用主密码解锁')
-        .fontSize(15)
+        .fontSize(RJ_FS_HEADING)
         .backgroundColor($r('app.color.rj_text'))
         .fontColor($r('app.color.rj_bg'))
         .width('80%')
         .height(46)
-        .margin({ top: 8 })
+        .margin({ top: RJ_SP_MD })
         .onClick(() => {
           this.doUnlock();
         })
 
       if (this.error.length > 0) {
         Text(this.error)
-          .fontSize(12)
+          .fontSize(RJ_FS_CAPTION)
           .fontColor($r('app.color.rj_red'))
-          .margin({ top: 16 })
+          .margin({ top: RJ_SP_XL })
       }
       Text('数据只在这台设备上 · AES-256-GCM 加密')
-        .fontSize(10)
+        .fontSize(RJ_FS_META)
         .fontColor($r('app.color.rj_text3'))
         .margin({ bottom: 40, top: 30 })
     }

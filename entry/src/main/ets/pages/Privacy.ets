@@ -1,4 +1,5 @@
 import { router } from '@kit.ArkUI';
+import { RJ_FS_CALLOUT, RJ_FS_HEADING, RJ_FS_TITLE, RJ_SP_LG, RJ_SP_MD, RJ_SP_SM, RJ_SP_XL, RJ_SP_XXL } from '../theme/RjTokens';
 
 /**
  * 隐私政策（应用内可看 —— 照 RockReader 的做法）
@@ -70,29 +71,29 @@ struct Privacy {
     Column() {
       Row() {
         Text('<')
-          .fontSize(18)
+          .fontSize(RJ_FS_TITLE)
           .fontColor($r('app.color.rj_text2'))
           .onClick(() => {
             router.back();
           })
-          .padding({ right: 12 })
+          .padding({ right: RJ_SP_LG })
         Text('隐私政策')
-          .fontSize(15)
+          .fontSize(RJ_FS_HEADING)
           .fontColor($r('app.color.rj_text'))
           .letterSpacing(2)
       }
       .width('100%')
-      .padding({ left: 20, right: 20, top: 16, bottom: 12 })
+      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_XL, bottom: RJ_SP_LG })
 
       Scroll() {
         Column() {
           ForEach(LINES, (line: string) => {
             if (line.startsWith('#')) {
               Text(line.substring(1))
-                .fontSize(15)
+                .fontSize(RJ_FS_HEADING)
                 .fontWeight(FontWeight.Bold)
                 .fontColor($r('app.color.rj_text'))
-                .margin({ top: 18, bottom: 6 })
+                .margin({ top: RJ_SP_XXL, bottom: RJ_SP_MD })
                 .width('100%')
             } else {
               Text() {
@@ -102,14 +103,14 @@ struct Privacy {
                     .fontColor(part.bold ? $r('app.color.rj_text') : $r('app.color.rj_text2'))
                 }, (part: InlinePart) => part.text)
               }
-                .fontSize(13)
+                .fontSize(RJ_FS_CALLOUT)
                 .lineHeight(22)
-                .margin({ bottom: 4 })
+                .margin({ bottom: RJ_SP_SM })
                 .width('100%')
             }
           }, (line: string, index: number) => index + line)
         }
-        .padding({ left: 20, right: 20, bottom: 40 })
+        .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: 40 })
         .alignItems(HorizontalAlign.Start)
       }
       .layoutWeight(1)
