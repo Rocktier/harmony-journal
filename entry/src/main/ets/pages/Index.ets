@@ -289,36 +289,52 @@ struct Index {
             .margin({ left: 8 })
         }
         Blank()
-        // 「写今天」提到头部：一天里最高频的动作不该要滚过日历和列表才看得到。
-        // 头部三个入口统一用真 `Button`（按压反馈 / 读屏报"按钮" / 可聚焦），
-        // `ButtonType.Normal` 显式写死 —— 默认值在 API 18 变过，见 `chip()` 注释。
+        /**
+         * 「写今天」—— 这是本应用**唯一一个"创造"动作**，也是一天里最高频的动作，
+         * 所以它必须拿最高视觉权重：不该缩在日历和列表下面，也不该只是红字当链接。
+         *
+         * 用 `ButtonStyleMode.EMPHASIZED`（**API 11**，官方语义就是
+         * "用来指向**最重要任务**的按钮"）⇒ 实心填充、明确可点。
+         * 填充色取品牌红：既是最强权重，又和家族"黑底 + 红点"的识别锚一致。
+         * 文字色用 `rj_bg`（深/浅色下分别是黑/近白压在红底上，两边对比度都够）。
+         *
+         * ⚠️ `ButtonType.Normal` 显式写死：默认值在 **API 18 变过**
+         *    （<18 = Capsule，≥18 = ROUNDED_RECTANGLE），我们覆盖 API 16+，
+         *    不写死则不同版本设备上形状不一致。圆角另外显式给（API 7 的通用属性）。
+         */
         Button('写今天', { type: ButtonType.Normal, stateEffect: true })
+          .buttonStyle(ButtonStyleMode.EMPHASIZED)
+          .backgroundColor($r('app.color.rj_red'))
+          .fontColor($r('app.color.rj_bg'))
           .fontSize(12)
-          .fontColor($r('app.color.rj_red'))
           .fontWeight(FontWeight.Bold)
-          .backgroundColor(Color.Transparent)
-          .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-          .margin({ right: 8 })
+          .borderRadius(6)
+          .padding({ left: 14, right: 14, top: 7, bottom: 7 })
+          .margin({ right: 10 })
           .onClick(() => {
             this.open(todayKey());
           })
+        /**
+         * 「月/时光」与「设置」是**次要入口** ⇒ `ButtonStyleMode.TEXTUAL`（API 11，
+         * 官方语义"纯文字、无背景"）。让位给「写今天」，视觉层级才立得住。
+         */
         Button(this.mode === 'month' ? '月' : '时光', { type: ButtonType.Normal, stateEffect: true })
+          .buttonStyle(ButtonStyleMode.TEXTUAL)
           .fontSize(10)
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_text3'))
-          .backgroundColor(Color.Transparent)
-          .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+          .padding({ left: 8, right: 4, top: 4, bottom: 4 })
           .margin({ right: 6 })
           .onClick(() => {
             this.mode = this.mode === 'month' ? 'timeline' : 'month';
           })
         // 设置（导出备份的生命线入口 —— 藏深了等于没有）
         Button('设置', { type: ButtonType.Normal, stateEffect: true })
+          .buttonStyle(ButtonStyleMode.TEXTUAL)
           .fontSize(10)
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_text3'))
-          .backgroundColor(Color.Transparent)
-          .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+          .padding({ left: 4, right: 8, top: 4, bottom: 4 })
           .onClick(() => {
             router.pushUrl({ url: 'pages/Settings' });
           })
