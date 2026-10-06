@@ -594,38 +594,55 @@ struct Editor {
         .padding({ left: 20, top: 8, bottom: 4 })
       }
 
-      // 工具栏：B / I / 列表 / 保存
+      /**
+       * 工具栏：B / I / 列表 / 图片 / 字数 / 撤销 / 重做 / 保存
+       *
+       * ⚠️ 为什么这些必须是真正的 `Button`（原来全是 `Text(...).onClick(...)`）：
+       *   ① **按压反馈** —— 伪按钮点了没有任何视觉回应，"有没有点到"没有确认感；
+       *   ② **无障碍** —— 读屏只会念出文本、不报"按钮"，视障用户不知道这里能点；
+       *   ③ **焦点态** —— 外接键盘/触控笔无法聚焦到伪按钮。
+       *   `Button` 自带这三条（`stateEffect` = 鸿蒙标准按压效果），且 `Button` 是 API 7 起就有的组件。
+       *
+       * ⚠️ `type` 必须**显式写 `ButtonType.Normal`**：它的默认值在 **API 18 变过**
+       *    （<18 是 `Capsule`，≥18 是 `ROUNDED_RECTANGLE`）。我们声明覆盖 API 16+，
+       *    不写死的话 16/17 与 18+ 设备上按钮形状会不一致 —— 这正是"要能在所有
+       *    受支持设备上表现一致"的要求。`ButtonType.Normal` = 无圆角，@since 7。
+       */
       Row() {
-        Text('B')
+        Button('B', { type: ButtonType.Normal, stateEffect: true })
+          .backgroundColor(Color.Transparent)
+          .padding(10)
           .fontSize(15)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.rj_text'))
           .onClick(() => {
             this.setSpanStyle(true, false);
           })
+        Button('I', { type: ButtonType.Normal, stateEffect: true })
+          .backgroundColor(Color.Transparent)
           .padding(10)
-        Text('I')
           .fontSize(15)
           .fontStyle(FontStyle.Italic)
           .fontColor($r('app.color.rj_text'))
           .onClick(() => {
             this.setSpanStyle(false, true);
           })
+        Button('• 列表', { type: ButtonType.Normal, stateEffect: true })
+          .backgroundColor(Color.Transparent)
           .padding(10)
-        Text('• 列表')
           .fontSize(12)
           .fontColor($r('app.color.rj_text'))
           .onClick(() => {
             this.controller.addTextSpan('- ', { style: { fontSize: 16, fontColor: $r('app.color.rj_text') } });
           })
+        Button('图片', { type: ButtonType.Normal, stateEffect: true })
+          .backgroundColor(Color.Transparent)
           .padding(10)
-        Text('图片')
           .fontSize(12)
           .fontColor($r('app.color.rj_text'))
           .onClick(() => {
             this.pickImage();
           })
-          .padding(10)
         Blank()
         Text(this.words + ' 字')
           .fontSize(10)
@@ -633,27 +650,32 @@ struct Editor {
           .fontColor($r('app.color.rj_text3'))
           .padding(10)
         // 撤销/重做：不可逆的编辑必须有退路（手机上手指一滑就是一段话没了）
-        Text('撤销')
+        Button('撤销', { type: ButtonType.Normal, stateEffect: true })
+          .backgroundColor(Color.Transparent)
+          .padding(10)
           .fontSize(12)
           .fontColor(this.canUndo ? $r('app.color.rj_text') : $r('app.color.rj_line'))
+          .enabled(this.canUndo)   // 禁用态交给 Button，读屏也能正确报"已停用"
           .onClick(() => {
             this.doUndo();
           })
+        Button('重做', { type: ButtonType.Normal, stateEffect: true })
+          .backgroundColor(Color.Transparent)
           .padding(10)
-        Text('重做')
           .fontSize(12)
           .fontColor(this.canRedo ? $r('app.color.rj_text') : $r('app.color.rj_line'))
+          .enabled(this.canRedo)
           .onClick(() => {
             this.doRedo();
           })
+        Button('保存', { type: ButtonType.Normal, stateEffect: true })
+          .backgroundColor(Color.Transparent)
           .padding(10)
-        Text('保存')
           .fontSize(12)
           .fontColor($r('app.color.rj_red'))
           .onClick(() => {
             this.save();
           })
-          .padding(10)
       }
       .width('100%')
       .padding({ left: 8, right: 8, bottom: 20 })

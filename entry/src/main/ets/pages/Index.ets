@@ -69,6 +69,16 @@ struct Index {
   @State private filterMood: string = '';
   @State private filterTag: string = '';
   @State private allTags: string[] = [];
+  /**
+   * 标签筛选是否展开。
+   *
+   * ⚠️ 为什么标签默认**收起**：标签是"用户自定义、数量不定"的筛选项，
+   * 常驻一整行的后果是 —— ① 白占一行高度（收藏+心情已经占了一行）；
+   * ② 有没有标签取决于写过什么，于是这一行**忽隐忽现**，看着很突兀。
+   * 收成一个入口后：默认只占一个 chip，展开才占空间。
+   * 正在生效时入口会显示"标签 · #xxx"，免得"筛着却看不出来"。
+   */
+  @State private tagsExpanded: boolean = false;
   /** 距上次备份超过阈值就提醒一次（不自动写文件、只提醒） */
   @State private backupDue: boolean = false;
   private store: NoteStore = getStore();
@@ -110,10 +120,18 @@ struct Index {
     this.dataSource.reload(timelineRows(shown));
   }
 
-  /** 筛选条上的一枚按钮（选中才亮） */
+  /**
+   * 筛选 chip（收藏 / 心情 / 标签）—— 选中才亮。
+   *
+   * ⚠️ 用真正的 `Button`，不用 `Text(...).onClick(...)`：伪按钮没有按压反馈、
+   * 读屏不报"按钮"、无法聚焦 —— 而筛选是高频操作，这三条都得有。
+   * `ButtonType.Normal` **必须显式写**：它的默认值在 **API 18 变过**
+   * （<18 是 `Capsule`，≥18 是 `ROUNDED_RECTANGLE`），我们覆盖 API 16+，
+   * 不写死的话不同版本设备上形状不一致。
+   */
   @Builder
   private chip(label: string, active: boolean, onTap: () => void) {
-    Text(label)
+    Button(label, { type: ButtonType.Normal, stateEffect: true })
       .fontSize(11)
       .fontColor(active ? $r('app.color.rj_text') : $r('app.color.rj_text3'))
       .backgroundColor(active ? $r('app.color.rj_g100') : $r('app.color.rj_card'))
@@ -271,28 +289,36 @@ struct Index {
             .margin({ left: 8 })
         }
         Blank()
-        // 「写今天」提到头部：一天里最高频的动作不该要滚过日历和列表才看得到
-        Text('写今天')
+        // 「写今天」提到头部：一天里最高频的动作不该要滚过日历和列表才看得到。
+        // 头部三个入口统一用真 `Button`（按压反馈 / 读屏报"按钮" / 可聚焦），
+        // `ButtonType.Normal` 显式写死 —— 默认值在 API 18 变过，见 `chip()` 注释。
+        Button('写今天', { type: ButtonType.Normal, stateEffect: true })
           .fontSize(12)
           .fontColor($r('app.color.rj_red'))
           .fontWeight(FontWeight.Bold)
-          .margin({ right: 16 })
+          .backgroundColor(Color.Transparent)
+          .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+          .margin({ right: 8 })
           .onClick(() => {
             this.open(todayKey());
           })
-        Text(this.mode === 'month' ? '月' : '时光')
+        Button(this.mode === 'month' ? '月' : '时光', { type: ButtonType.Normal, stateEffect: true })
           .fontSize(10)
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_text3'))
-          .margin({ right: 14 })
+          .backgroundColor(Color.Transparent)
+          .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+          .margin({ right: 6 })
           .onClick(() => {
             this.mode = this.mode === 'month' ? 'timeline' : 'month';
           })
         // 设置（导出备份的生命线入口 —— 藏深了等于没有）
-        Text('设置')
+        Button('设置', { type: ButtonType.Normal, stateEffect: true })
           .fontSize(10)
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_text3'))
+          .backgroundColor(Color.Transparent)
+          .padding({ left: 8, right: 8, top: 4, bottom: 4 })
           .onClick(() => {
             router.pushUrl({ url: 'pages/Settings' });
           })
@@ -354,11 +380,20 @@ struct Index {
             this.refreshData();
           })
         })
+        // 标签入口（默认收起，原因见 `tagsExpanded` 的注释）。
+        // 正在生效时把标签名直接写在入口上 —— 否则收起后看不出"正在筛"。
+        if (this.allTags.length > 0) {
+          this.chip('标签' + (this.filterTag.length > 0 ? ' · ' + this.filterTag : '') +
+            (this.tagsExpanded ? ' ▾' : ' ▸'),
+            this.tagsExpanded || this.filterTag.length > 0, () => {
+            this.tagsExpanded = !this.tagsExpanded;
+          })
+        }
       }
       .width('100%')
       .padding({ left: 20, right: 20, bottom: 4 })
 
-      if (this.allTags.length > 0) {
+      if (this.allTags.length > 0 && this.tagsExpanded) {
         Scroll() {
           Row() {
             ForEach(this.allTags, (t: string) => {
