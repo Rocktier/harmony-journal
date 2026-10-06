@@ -8,13 +8,25 @@ const DOMAIN: number = 0x0000;
 const TAG: string = 'RockJournal';
 
 export default class EntryAbility extends UIAbility {
-  onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
-    // Journal 默认深色（家族 Nothing OS 风格）
+  /**
+   * 跟随系统的深/浅色（`COLOR_MODE_NOT_SET`）。
+   *
+   * ⚠️ 原来这里写死 `COLOR_MODE_DARK`（"Journal 默认深色"），代价是：
+   *   ① `resources/dark/` 限定符**永远不会生效**（系统浅色时我们仍强制深色）；
+   *   ② 上架审核要求"适配深/浅色模式"，强制单色属于高风险项。
+   * 深色观感一点没丢 —— 深色值搬进了 `resources/dark/element/color.json`，
+   * 系统在深色模式下走的仍是原来那套 `#000000` / `#FFFFFF`。
+   */
+  private applyColorMode(): void {
     try {
-      this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
+      this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
     } catch (e) {
       hilog.warn(DOMAIN, TAG, 'setColorMode failed: %{public}s', JSON.stringify(e));
     }
+  }
+
+  onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+    this.applyColorMode();
     hilog.info(DOMAIN, TAG, 'onCreate');
   }
 

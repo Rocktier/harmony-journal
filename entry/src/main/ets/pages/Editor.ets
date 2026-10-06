@@ -223,9 +223,9 @@ struct Editor {
     }
     for (let i: number = 0; i < this.lines.length; i++) {
       if (i > 0) {
-        this.controller.addTextSpan('\n', { style: { fontSize: BODY_SIZE, fontColor: '#FFFFFF' } });
+        this.controller.addTextSpan('\n', { style: { fontSize: BODY_SIZE, fontColor: $r('app.color.rj_text') } });
       }
-      this.controller.addTextSpan(this.lines[i], { style: { fontSize: BODY_SIZE, fontColor: '#FFFFFF' } });
+      this.controller.addTextSpan(this.lines[i], { style: { fontSize: BODY_SIZE, fontColor: $r('app.color.rj_text') } });
     }
     hilog.info(DOMAIN, TAG, 'restored %{public}d lines', this.lines.length);
   }
@@ -430,7 +430,7 @@ struct Editor {
   private setSpanStyle(bold: boolean, italic: boolean): void {
     this.controller.setTypingStyle({
       fontSize: 16,
-      fontColor: '#FFFFFF',
+      fontColor: $r('app.color.rj_text'),
       fontWeight: bold ? FontWeight.Bold : FontWeight.Normal,
       fontStyle: italic ? FontStyle.Italic : FontStyle.Normal
     });
@@ -565,8 +565,8 @@ struct Editor {
         .width('100%')
         .backgroundColor(Color.Transparent)
         .caretColor($r('app.color.rj_red'))
-        .selectedBackgroundColor('#33FF4A3D')
-        .placeholder('写点什么…（# 标题、- 列表）', { font: { size: BODY_SIZE }, fontColor: '#52FFFFFF' })
+        .selectedBackgroundColor($r('app.color.rj_sel'))
+        .placeholder('写点什么…（# 标题、- 列表）', { font: { size: BODY_SIZE }, fontColor: $r('app.color.rj_text3') })
         .onReady(() => {
           this.setSpanStyle(false, false);
           this.restore();
@@ -616,7 +616,7 @@ struct Editor {
           .fontSize(12)
           .fontColor($r('app.color.rj_text'))
           .onClick(() => {
-            this.controller.addTextSpan('- ', { style: { fontSize: 16, fontColor: '#FFFFFF' } });
+            this.controller.addTextSpan('- ', { style: { fontSize: 16, fontColor: $r('app.color.rj_text') } });
           })
           .padding(10)
         Text('图片')
