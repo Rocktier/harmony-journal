@@ -11,6 +11,9 @@ import {
   MOODS, Mood, NoteMeta, isValidDateKey, parseTags, tagsToText, timeOfDay, todayKey
 } from '../data/NoteMeta';
 import { NoteStore } from '../data/NoteStore';
+import { APPEARANCE_SYSTEM, AppearanceMode, appearanceIcon, nextAppearance } from '../common/Appearance';
+import { applyAppearance } from '../common/AppearanceApply';
+import { AppearancePrefs } from '../data/AppearancePrefs';
 import { getStore } from '../data/NoteStoreHolder';
 import { RawSpan } from '../data/NoteBlocks';
 import { mergeSpans } from '../data/NoteBlocks';
@@ -60,8 +63,11 @@ struct Editor {
   /** 撤销/重做是否可用（块级快照；本 SDK 的 RichEditor 无 undo API） */
   @State private canUndo: boolean = false;
   @State private canRedo: boolean = false;
+  /** 外观（跟随系统 / 深色 / 浅色）—— 编辑器头部有快捷切换 */
+  @State private appearance: AppearanceMode = APPEARANCE_SYSTEM;
   private pendingLines: string[] = [];
   private store: NoteStore = getStore();
+  private prefs: AppearancePrefs = new AppearancePrefs();
   private images: ImageStore = new ImageStore();
   private controller: RichEditorController = new RichEditorController();
   private options: RichEditorOptions = { controller: this.controller };
@@ -89,9 +95,27 @@ struct Editor {
     }
   }
 
+  /**
+   * 快捷切换日/夜（编辑器头部那个按钮）。
+   *
+   * ⚠️ **必须先 save 再切换**：`setColorMode` 会触发配置变更、UI 重建，
+   *    没落盘的正文会丢 —— 而"写到一半想调暗"恰恰是正文最多的时刻。
+   */
+  private toggleAppearance(): void {
+    if (!this.saved) {
+      this.save();
+    }
+    const next: AppearanceMode = nextAppearance(this.appearance);
+    this.appearance = next;
+    this.prefs.set(next);
+    applyAppearance(getContext(this) as common.UIAbilityContext, next);
+  }
+
   aboutToAppear(): void {
     const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
     this.images.open(ctx.filesDir);
+    this.prefs.open(ctx);
+    this.appearance = this.prefs.get();
     const params: object = router.getParams() as object;
     const holder: EntryParam = params as EntryParam;
     const reqId: string = holder.id !== undefined ? holder.id : '';
@@ -493,6 +517,22 @@ struct Editor {
           .onClick(() => {
             this.favorite = !this.favorite;
             this.save();
+          })
+        /**
+         * 日/夜快捷切换（党哥 2026-10-12：很多人晚上在被窝里写日记，不能太亮）。
+         * 放在头部而非设置里 —— 写的时候才想得起要调暗。
+         * 一点就切：跟随系统 → 深色 → 浅色 → 跟随系统（深色排最前，因为夜间才是高频）。
+         */
+        Button(appearanceIcon(this.appearance), { type: ButtonType.Normal, stateEffect: true })
+          .fontSize(RJ_FS_CAPTION)
+          .fontColor($r('app.color.rj_text2'))
+          .backgroundColor($r('app.color.rj_card'))
+          .borderRadius(RJ_RADIUS_SM)
+          .width(36)
+          .height(36)
+          .margin({ left: RJ_SP_MD })
+          .onClick(() => {
+            this.toggleAppearance();
           })
         Blank()
         /**

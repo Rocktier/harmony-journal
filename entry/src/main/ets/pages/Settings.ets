@@ -4,8 +4,11 @@ import { fileIo as fs } from '@kit.CoreFileKit';
 import { router } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
+import { APPEARANCE_DARK, APPEARANCE_LIGHT, APPEARANCE_SYSTEM, AppearanceMode } from '../common/Appearance';
+import { applyAppearance } from '../common/AppearanceApply';
 import { APP_NAME_CN, APP_VERSION } from '../common/AppMeta';
 import { DEV_SHOW_BADGE } from '../common/DevFlags';
+import { AppearancePrefs } from '../data/AppearancePrefs';
 import { JournalStats, computeStats, dateKeyOf, todayKey } from '../data/NoteMeta';
 import { getStore } from '../data/NoteStoreHolder';
 import {
@@ -33,6 +36,9 @@ struct Settings {
     total: 0, days: 0, words: 0, streak: 0, longest: 0, wroteToday: false
   };
   private store = getStore();
+  private prefs: AppearancePrefs = new AppearancePrefs();
+  /** 外观（跟随系统 / 深色 / 浅色）—— 默认跟随系统，不打扰 */
+  @State private appearance: AppearanceMode = APPEARANCE_SYSTEM;
 
   aboutToAppear(): void {
     this.noteCount = this.store.list().length;
@@ -40,6 +46,30 @@ struct Settings {
     // 上次备份：**读真实记录**，不再写死"从未"（否则"生命线"永远是句空话）
     const at: number = this.store.lastBackupAt();
     this.lastBackup = at > 0 ? dateKeyOf(new Date(at)) : '从未';
+    this.prefs.open(getContext(this) as common.Context);
+    this.appearance = this.prefs.get();
+  }
+
+  /** 切换外观：落偏好 + 立刻作用于系统（资源限定符自动换深/浅色，全应用一致） */
+  private setAppearance(mode: AppearanceMode): void {
+    this.appearance = mode;
+    this.prefs.set(mode);
+    applyAppearance(getContext(this) as common.Context, mode);
+  }
+
+  /** 三态 chip：选中才亮（真 Button —— 按压反馈、读屏报"按钮"、可聚焦） */
+  @Builder
+  private appearanceChip(label: string, mode: AppearanceMode) {
+    Button(label, { type: ButtonType.Normal, stateEffect: true })
+      .fontSize(RJ_FS_META)
+      .fontWeight(this.appearance === mode ? FontWeight.Bold : FontWeight.Normal)
+      .fontColor(this.appearance === mode ? $r('app.color.rj_bg') : $r('app.color.rj_text3'))
+      .backgroundColor(this.appearance === mode ? $r('app.color.rj_accent') : $r('app.color.rj_card'))
+      .padding({ left: RJ_SP_LG, right: RJ_SP_LG, top: RJ_SP_SM, bottom: RJ_SP_SM })
+      .margin({ left: RJ_SP_SM })
+      .onClick(() => {
+        this.setAppearance(mode);
+      })
   }
 
   private async doExport(): Promise<void> {
@@ -171,6 +201,26 @@ struct Settings {
       }
       .width('100%')
       .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_XL, bottom: RJ_SP_LG })
+
+      // 外观（日/夜）—— 放在设置页最上面：晚上在被窝里写日记是高频场景（党哥 2026-10-12）
+      Text('外观')
+        .fontSize(RJ_FS_META)
+        .fontFamily('monospace')
+        .fontColor($r('app.color.rj_text3'))
+        .width('100%')
+        .padding({ left: RJ_SP_XXL, bottom: RJ_SP_MD })
+
+      Row() {
+        Text('日间 / 夜间')
+          .fontSize(RJ_FS_CALLOUT)
+          .fontColor($r('app.color.rj_text'))
+        Blank()
+        this.appearanceChip('跟随系统', APPEARANCE_SYSTEM)
+        this.appearanceChip('深色', APPEARANCE_DARK)
+        this.appearanceChip('浅色', APPEARANCE_LIGHT)
+      }
+      .width('100%')
+      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
 
       // 备份（生命线）
       Text('备份')
