@@ -37,10 +37,14 @@ export const RJ_SP_VOID: number = 40;      /** 大留白：区块之间 / 空状
 export const RJ_SP_VOID_L: number = 60;    /** 超大留白：空状态整体上方 */
 export const RJ_SP_TOP_INSET: number = 80; /** 登录页顶部整体下沉 */
 
-/** 圆角阶（vp） */
-export const RJ_RADIUS_SM: number = 2; /** 缩略图等小元素 */
-export const RJ_RADIUS_MD: number = 4; /** 组件内控件（工具栏按键） */
-export const RJ_RADIUS_LG: number = 6; /** 强调型动作按钮（写今天 / 保存） */
+/**
+ * 圆角阶（vp）—— **华为官方五档**（《圆角参数-视觉风格-手机/折叠屏/平板》：超小 4 / 小 8 / 中 12 / 大 16 / 超大 24）
+ * 2026-10-11 随家族对齐改：原 2/4/6 都不落在官方档位上（与 Rock阅读 Phase 21 同一套）。
+ */
+export const RJ_RADIUS_SM: number = 4;  /** 缩略图 / chip —— 官方超小圆角 */
+export const RJ_RADIUS_MD: number = 8;  /** 组件内控件（工具栏按键）—— 官方小圆角 */
+export const RJ_RADIUS_LG: number = 12; /** 强调型动作按钮（写今天 / 保存）—— 官方中圆角 */
+export const RJ_RADIUS_XL: number = 16; /** 卡片 / 面板 / 浮层 —— 官方大圆角 */
 
 /** 行高阶（vp） */
 export const RJ_LH_PARA: number = 22; /** 正文段落行高（CALLOUT 字号下约 1.5 倍） */

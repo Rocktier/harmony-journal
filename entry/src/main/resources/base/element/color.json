@@ -18,15 +18,11 @@
     },
     {
       "name": "rj_text3",
-      "value": "#66000000"
+      "value": "#8F000000"
     },
     {
       "name": "rj_line",
       "value": "#1F000000"
-    },
-    {
-      "name": "rj_red",
-      "value": "#C72B20"
     },
     {
       "name": "rj_card",
@@ -38,11 +34,11 @@
     },
     {
       "name": "rj_accent",
-      "value": "#0E6E5A"
+      "value": "#0A59F7"
     },
     {
       "name": "rj_sel",
-      "value": "#33C72B20"
+      "value": "#330A59F7"
     }
   ]
 }

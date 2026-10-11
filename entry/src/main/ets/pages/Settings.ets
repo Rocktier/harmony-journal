@@ -242,7 +242,7 @@ struct Settings {
       //    那属于"承诺不一致"，比缺功能更伤信任。图片请用加密备份。
       Text('TXT / Markdown 是明文、不加密，且不含图片（只留占位）—— 图片请用上面的加密备份')
         .fontSize(RJ_FS_META)
-        .fontColor($r('app.color.rj_red'))
+        .fontColor($r('app.color.rj_accent'))
         .width('100%')
         .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_LG })
 
@@ -337,7 +337,7 @@ struct Settings {
       if (this.toast.length > 0) {
         Text(this.toast)
           .fontSize(RJ_FS_CAPTION)
-          .fontColor($r('app.color.rj_red'))
+          .fontColor($r('app.color.rj_accent'))
           .margin({ top: RJ_SP_LG })
       }
 
@@ -351,7 +351,7 @@ struct Settings {
         Text('开发模式：未启用上锁（提审前务必关闭）')
           .fontSize(RJ_FS_META)
           .fontFamily('monospace')
-          .fontColor($r('app.color.rj_red'))
+          .fontColor($r('app.color.rj_accent'))
           .margin({ bottom: RJ_SP_XXXL })
       }
     }

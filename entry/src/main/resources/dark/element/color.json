@@ -10,27 +10,23 @@
     },
     {
       "name": "rj_text",
-      "value": "#FFFFFF"
+      "value": "#DBFFFFFF"
     },
     {
       "name": "rj_text2",
-      "value": "#8CFFFFFF"
+      "value": "#99FFFFFF"
     },
     {
       "name": "rj_text3",
-      "value": "#52FFFFFF"
+      "value": "#80FFFFFF"
     },
     {
       "name": "rj_line",
       "value": "#24FFFFFF"
     },
     {
-      "name": "rj_red",
-      "value": "#FF4A3D"
-    },
-    {
       "name": "rj_card",
-      "value": "#08FFFFFF"
+      "value": "#303030"
     },
     {
       "name": "rj_g100",
@@ -38,11 +34,11 @@
     },
     {
       "name": "rj_accent",
-      "value": "#3DBB9B"
+      "value": "#317AF7"
     },
     {
       "name": "rj_sel",
-      "value": "#33FF4A3D"
+      "value": "#33317AF7"
     }
   ]
 }

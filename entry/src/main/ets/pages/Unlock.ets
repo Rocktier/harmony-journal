@@ -152,7 +152,7 @@ struct Unlock {
       if (this.error.length > 0) {
         Text(this.error)
           .fontSize(RJ_FS_CAPTION)
-          .fontColor($r('app.color.rj_red'))
+          .fontColor($r('app.color.rj_accent'))
           .margin({ top: RJ_SP_XL })
       }
       Text('数据只在这台设备上 · AES-256-GCM 加密')

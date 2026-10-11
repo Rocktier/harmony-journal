@@ -487,7 +487,7 @@ struct Editor {
         // 收藏：重要的几篇★住，以后一眼能挑出来
         Text(this.favorite ? '★' : '☆')
           .fontSize(RJ_FS_BODY)
-          .fontColor(this.favorite ? $r('app.color.rj_red') : $r('app.color.rj_text3'))
+          .fontColor(this.favorite ? $r('app.color.rj_accent') : $r('app.color.rj_text3'))
           .margin({ left: RJ_SP_LG })
           .padding(RJ_SP_SM)
           .onClick(() => {
@@ -503,7 +503,7 @@ struct Editor {
          */
         Button('保存', { type: ButtonType.Normal, stateEffect: true })
           .buttonStyle(ButtonStyleMode.EMPHASIZED)
-          .backgroundColor($r('app.color.rj_red'))
+          .backgroundColor($r('app.color.rj_accent'))
           .fontColor($r('app.color.rj_bg'))
           .fontSize(RJ_FS_CAPTION)
           .fontWeight(FontWeight.Bold)
@@ -695,7 +695,7 @@ struct Editor {
         .layoutWeight(1)
         .width('100%')
         .backgroundColor(Color.Transparent)
-        .caretColor($r('app.color.rj_red'))
+        .caretColor($r('app.color.rj_accent'))
         .selectedBackgroundColor($r('app.color.rj_sel'))
         /**
          * 占位文案**不再提 Markdown**（原来是「写点什么…（# 标题、- 列表）」）。

@@ -284,8 +284,8 @@ struct Index {
           Text('DEV')
             .fontSize(RJ_FS_META)
             .fontFamily('monospace')
-            .fontColor($r('app.color.rj_red'))
-            .border({ width: 1, color: $r('app.color.rj_red') })
+            .fontColor($r('app.color.rj_accent'))
+            .border({ width: 1, color: $r('app.color.rj_accent') })
             .padding({ left: RJ_SP_SM, right: RJ_SP_SM, top: RJ_SP_XS, bottom: RJ_SP_XS })
             .margin({ left: RJ_SP_MD })
         }
@@ -305,7 +305,7 @@ struct Index {
          */
         Button('写今天', { type: ButtonType.Normal, stateEffect: true })
           .buttonStyle(ButtonStyleMode.EMPHASIZED)
-          .backgroundColor($r('app.color.rj_red'))
+          .backgroundColor($r('app.color.rj_accent'))
           .fontColor($r('app.color.rj_bg'))
           .fontSize(RJ_FS_CAPTION)
           .fontWeight(FontWeight.Bold)
@@ -361,7 +361,7 @@ struct Index {
           Text('今天还没写')
             .fontSize(RJ_FS_META)
             .fontFamily('monospace')
-            .fontColor($r('app.color.rj_red'))
+            .fontColor($r('app.color.rj_accent'))
         }
       }
       .width('100%')
@@ -372,11 +372,11 @@ struct Index {
         Row() {
           Text('距上次备份超过 30 天了 · 去备份')
             .fontSize(RJ_FS_CAPTION)
-            .fontColor($r('app.color.rj_red'))
+            .fontColor($r('app.color.rj_accent'))
             .layoutWeight(1)
           Text('去备份 ›')
             .fontSize(RJ_FS_CAPTION)
-            .fontColor($r('app.color.rj_red'))
+            .fontColor($r('app.color.rj_accent'))
             .onClick(() => {
               router.pushUrl({ url: 'pages/Settings' });
             })
@@ -460,7 +460,7 @@ struct Index {
                   Text(card.years)
                     .fontSize(RJ_FS_META)
                     .fontFamily('monospace')
-                    .fontColor($r('app.color.rj_red'))
+                    .fontColor($r('app.color.rj_accent'))
                   Text(card.meta.date)
                     .fontSize(RJ_FS_META)
                     .fontFamily('monospace')
@@ -573,7 +573,7 @@ struct Index {
                   .textAlign(TextAlign.Center)
                   .width('100%')
                 Circle({ width: 5, height: 5 })
-                  .fill(cell.hasNote ? $r('app.color.rj_red') : Color.Transparent)
+                  .fill(cell.hasNote ? $r('app.color.rj_accent') : Color.Transparent)
                   .margin({ top: RJ_SP_SM })
               }
               .justifyContent(FlexAlign.Center)
@@ -622,7 +622,7 @@ struct Index {
                   if (row.meta !== null && row.meta.favorite) {
                     Text('★')
                       .fontSize(RJ_FS_CALLOUT)
-                      .fontColor($r('app.color.rj_red'))
+                      .fontColor($r('app.color.rj_accent'))
                       .margin({ left: RJ_SP_LG })
                   }
                   Blank()
@@ -711,7 +711,7 @@ struct Index {
                       if (row.meta.favorite) {
                         Text('★')
                           .fontSize(RJ_FS_CALLOUT)
-                          .fontColor($r('app.color.rj_red'))
+                          .fontColor($r('app.color.rj_accent'))
                           .margin({ left: RJ_SP_MD })
                       }
                       Blank()
