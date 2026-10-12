@@ -495,25 +495,32 @@ struct Editor {
     Column() {
       // 头：日期 + 返回
       Row() {
-        Text('<')
+        // 返回：真 Button（原 Text.onClick 是伪按钮 —— 无按压反馈、读屏不报"按钮"、无法聚焦）
+        Button('<', { type: ButtonType.Normal, stateEffect: true })
           .fontSize(RJ_FS_TITLE)
           .fontColor($r('app.color.rj_text2'))
+          .backgroundColor(Color.Transparent)
+          .padding({ left: RJ_SP_SM, right: RJ_SP_LG })
+          .responseRegion({ x: 0, y: -8, width: '100%', height: 44 })
+          .accessibilityText('返回书架')
           .onClick(() => {
             this.save();
             router.back();
           })
-          .padding({ right: RJ_SP_LG })
         Text(this.date)
           .fontSize(RJ_FS_HEADING)
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_text'))
           .letterSpacing(2)
         // 收藏：重要的几篇★住，以后一眼能挑出来
-        Text(this.favorite ? '★' : '☆')
+        Button(this.favorite ? '★' : '☆', { type: ButtonType.Normal, stateEffect: true })
           .fontSize(RJ_FS_BODY)
           .fontColor(this.favorite ? $r('app.color.rj_accent') : $r('app.color.rj_text3'))
-          .margin({ left: RJ_SP_LG })
+          .backgroundColor(Color.Transparent)
+          .margin({ left: RJ_SP_SM })
           .padding(RJ_SP_SM)
+          .responseRegion({ x: -6, y: -6, width: '100%', height: 44 })
+          .accessibilityText(this.favorite ? '取消收藏' : '收藏这一篇')
           .onClick(() => {
             this.favorite = !this.favorite;
             this.save();
@@ -574,10 +581,13 @@ struct Editor {
           }
           Blank()
           if (this.dayEntries.length > 1) {
-            Text('‹')
+            Button('‹', { type: ButtonType.Normal, stateEffect: true })
               .fontSize(RJ_FS_BODY)
               .fontColor(this.dayIndex > 0 ? $r('app.color.rj_text2') : $r('app.color.rj_line'))
-              .padding({ left: RJ_SP_LG, right: RJ_SP_LG })
+              .backgroundColor(Color.Transparent)
+              .padding({ left: RJ_SP_LG, right: RJ_SP_MD })
+              .responseRegion({ x: 0, y: -8, width: '100%', height: 44 })
+              .accessibilityText('上一篇')
               .onClick(() => {
                 this.switchTo(-1);
               })
@@ -585,20 +595,26 @@ struct Editor {
               .fontSize(RJ_FS_CAPTION)
               .fontFamily('monospace')
               .fontColor($r('app.color.rj_text2'))
-            Text('›')
+            Button('›', { type: ButtonType.Normal, stateEffect: true })
               .fontSize(RJ_FS_BODY)
               .fontColor(this.dayIndex >= 0 && this.dayIndex < this.dayEntries.length - 1
                 ? $r('app.color.rj_text2') : $r('app.color.rj_line'))
-              .padding({ left: RJ_SP_LG, right: RJ_SP_LG })
+              .backgroundColor(Color.Transparent)
+              .padding({ left: RJ_SP_MD, right: RJ_SP_LG })
+              .responseRegion({ x: 0, y: -8, width: '100%', height: 44 })
+              .accessibilityText('下一篇')
               .onClick(() => {
                 this.switchTo(1);
               })
           }
-          Text('＋')
+          Button('＋', { type: ButtonType.Normal, stateEffect: true })
             .fontSize(RJ_FS_CALLOUT)
             .fontColor($r('app.color.rj_text'))
             .fontWeight(FontWeight.Bold)
+            .backgroundColor(Color.Transparent)
             .padding({ left: RJ_SP_LG })
+            .responseRegion({ x: -6, y: -8, width: '100%', height: 44 })
+            .accessibilityText('再写一篇')
             .onClick(() => {
               this.addAnotherHere();
             })
@@ -638,6 +654,8 @@ struct Editor {
           .fontColor($r('app.color.rj_text'))
           .placeholderColor($r('app.color.rj_text3'))
           .height(28)
+          // 热区补到 44vp（28 的框太小，手指难按；视觉不变）
+          .responseRegion({ x: 0, y: -8, width: '100%', height: 44 })
           .layoutWeight(1)
           .margin({ left: RJ_SP_MD })
           .onChange((v: string) => {

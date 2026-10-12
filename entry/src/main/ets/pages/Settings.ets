@@ -72,6 +72,38 @@ struct Settings {
       })
   }
 
+  /**
+   * 设置行（真 Button 文字态 + 右侧 › + 44vp 热区）。
+   *
+   * ⚠️ 原来是 `Text(...).onClick` **伪按钮** —— 没有按压反馈、读屏不报"按钮"、无法聚焦，
+   * 这是 A 类无障碍问题（AGC 会查）。整行可点也比只点那一小条文字好按得多。
+   */
+  @Builder
+  private settingRow(label: string, onTap: () => void) {
+    Row() {
+      // ⚠️ Button 没有 justifyContent 属性 —— 想左对齐就得用 content 形式放 Text
+      Button({ type: ButtonType.Normal, stateEffect: true }) {
+        Text(label)
+          .fontSize(RJ_FS_CALLOUT)
+          .fontColor($r('app.color.rj_text'))
+          .textAlign(TextAlign.Start)
+          .width('100%')
+      }
+      .backgroundColor(Color.Transparent)
+      .height(44)
+      .layoutWeight(1)
+      .accessibilityText(label)
+      .onClick(() => {
+        onTap();
+      })
+      Text('›')
+        .fontSize(RJ_FS_CALLOUT)
+        .fontColor($r('app.color.rj_text3'))
+    }
+    .width('100%')
+    .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_SM, bottom: RJ_SP_SM })
+  }
+
   private async doExport(): Promise<void> {
     const items = this.store.exportAll();
     if (items.length === 0) {
@@ -187,13 +219,16 @@ struct Settings {
   build() {
     Column() {
       Row() {
-        Text('<')
+        Button('<', { type: ButtonType.Normal, stateEffect: true })
           .fontSize(RJ_FS_TITLE)
           .fontColor($r('app.color.rj_text2'))
+          .backgroundColor(Color.Transparent)
+          .padding({ left: RJ_SP_SM, right: RJ_SP_LG })
+          .responseRegion({ x: 0, y: -8, width: '100%', height: 44 })
+          .accessibilityText('返回')
           .onClick(() => {
             router.back();
           })
-          .padding({ right: RJ_SP_LG })
         Text('设置')
           .fontSize(RJ_FS_HEADING)
           .fontColor($r('app.color.rj_text'))
@@ -230,62 +265,22 @@ struct Settings {
         .width('100%')
         .padding({ left: RJ_SP_XXL, bottom: RJ_SP_MD })
 
-      Row() {
-        Text('导出加密备份')
-          .fontSize(RJ_FS_CALLOUT)
-          .fontColor($r('app.color.rj_text'))
-          .onClick(() => {
-            this.doExport();
-          })
-        Blank()
-        Text('>')
-          .fontColor($r('app.color.rj_text3'))
-      }
-      .width('100%')
-      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
+      this.settingRow('导出加密备份', () => {
+        this.doExport();
+      })
 
-      Row() {
-        Text('从备份导入')
-          .fontSize(RJ_FS_CALLOUT)
-          .fontColor($r('app.color.rj_text'))
-          .onClick(() => {
-            this.doImport();
-          })
-        Blank()
-        Text('>')
-          .fontColor($r('app.color.rj_text3'))
-      }
-      .width('100%')
-      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
+      this.settingRow('从备份导入', () => {
+        this.doImport();
+      })
 
       // 可读导出（数据自主：不把用户锁死在本 App 里）
-      Row() {
-        Text('导出为文本 TXT')
-          .fontSize(RJ_FS_CALLOUT)
-          .fontColor($r('app.color.rj_text'))
-          .onClick(() => {
-            this.doExportReadable(false);
-          })
-        Blank()
-        Text('>')
-          .fontColor($r('app.color.rj_text3'))
-      }
-      .width('100%')
-      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
+      this.settingRow('导出为文本 TXT', () => {
+        this.doExportReadable(false);
+      })
 
-      Row() {
-        Text('导出为 Markdown')
-          .fontSize(RJ_FS_CALLOUT)
-          .fontColor($r('app.color.rj_text'))
-          .onClick(() => {
-            this.doExportReadable(true);
-          })
-        Blank()
-        Text('>')
-          .fontColor($r('app.color.rj_text3'))
-      }
-      .width('100%')
-      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
+      this.settingRow('导出为 Markdown', () => {
+        this.doExportReadable(true);
+      })
 
       // 告知要说全：明文风险 **和** 图片不包含在内。
       // ⚠️ 只说"明文"是不够的 —— 用户会以为导出=全部，迁走后才发现照片全丢，
@@ -357,19 +352,9 @@ struct Settings {
         .width('100%')
         .padding({ left: RJ_SP_XXL, bottom: RJ_SP_MD })
 
-      Row() {
-        Text('隐私政策')
-          .fontSize(RJ_FS_CALLOUT)
-          .fontColor($r('app.color.rj_text'))
-          .onClick(() => {
-            router.pushUrl({ url: 'pages/Privacy' });
-          })
-        Blank()
-        Text('>')
-          .fontColor($r('app.color.rj_text3'))
-      }
-      .width('100%')
-      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
+      this.settingRow('隐私政策', () => {
+        router.pushUrl({ url: 'pages/Privacy' });
+      })
 
       Row() {
         Text('版本')

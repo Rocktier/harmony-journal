@@ -434,6 +434,8 @@ struct Index {
         .fontColor($r('app.color.rj_text'))
         .placeholderColor($r('app.color.rj_text3'))
         .height(38)
+        // 热区补到 44vp（38 的框 + 上下各扩 3，视觉不变、手指好按）
+        .responseRegion({ x: 0, y: -3, width: '100%', height: 44 })
         .margin({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_MD })
         .onChange((v: string) => {
           this.query = v;
@@ -526,32 +528,40 @@ struct Index {
             .onClick(() => {
               this.open(hit.date, hit.id);
             })
-          }, (hit: SearchHit) => hit.date)
+          }, (hit: SearchHit) => 'h:' + hit.id)
         }
         .layoutWeight(1)
         .divider({ strokeWidth: 1, color: $r('app.color.rj_line') })
       } else if (this.mode === 'month') {
         // 月视图
         Row() {
-          Text('<')
+          // 月份切换：真 Button（原来是 Text.onClick 伪按钮 —— 无按压反馈、读屏不报"按钮"、
+          // 无法聚焦；这是 A 类无障碍问题）。44vp 热区用 responseRegion 补，不撑高行
+          Button('<', { type: ButtonType.Normal, stateEffect: true })
             .fontSize(RJ_FS_BODY)
             .fontColor($r('app.color.rj_text2'))
+            .backgroundColor(Color.Transparent)
+            .padding({ left: RJ_SP_LG, right: RJ_SP_MD })
+            .responseRegion({ x: 0, y: -8, width: '100%', height: 44 })
+            .accessibilityText('上一个月')
             .onClick(() => {
               this.monthKey = shiftMonth(this.monthKey, -1);
             })
-            .padding(RJ_SP_MD)
           Text(this.monthKey)
             .fontSize(RJ_FS_CALLOUT)
             .fontFamily('monospace')
             .fontColor($r('app.color.rj_text'))
             .letterSpacing(2)
-          Text('>')
+          Button('>', { type: ButtonType.Normal, stateEffect: true })
             .fontSize(RJ_FS_BODY)
             .fontColor($r('app.color.rj_text2'))
+            .backgroundColor(Color.Transparent)
+            .padding({ left: RJ_SP_MD, right: RJ_SP_LG })
+            .responseRegion({ x: 0, y: -8, width: '100%', height: 44 })
+            .accessibilityText('下一个月')
             .onClick(() => {
               this.monthKey = shiftMonth(this.monthKey, 1);
             })
-            .padding(RJ_SP_MD)
         }
         .margin({ bottom: RJ_SP_MD })
 
