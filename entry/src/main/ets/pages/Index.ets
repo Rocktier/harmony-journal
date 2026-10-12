@@ -18,7 +18,7 @@ import { RJ_FS_BODY, RJ_FS_CALLOUT, RJ_FS_CAPTION, RJ_FS_META, RJ_FS_TITLE, RJ_R
 /**
  * 主页面：月视图日历 + 时光时间轴 + 搜索 + 「那年今日」
  *
- * 家族观感：纯黑底、白字、红点做"有日记"的标记（与图标红点同源）。
+ * 家族观感：纯黑底、白字，官方系统蓝做"有日记"的标记（与图标同源）。
  *
  * ⚠️ Phase 10b（回头看）的用户视角：
  *   写完之后内容大概率再也不会被打开 —— 所以主页要**让过去自己出现**：
@@ -97,7 +97,7 @@ struct Index {
 
   /**
    * ⚠️ router.back 回来时 aboutToAppear **不会**重新触发（页面没销毁），
-   * 必须用 onPageShow 刷新 —— 不然编辑完回来，红点和列表都是旧数据（实拍抓到）。
+   * 必须用 onPageShow 刷新 —— 不然编辑完回来，标记点和列表都是旧数据（实拍抓到）。
    */
   onPageShow(): void {
     this.reload();
@@ -296,8 +296,8 @@ struct Index {
          *
          * 用 `ButtonStyleMode.EMPHASIZED`（**API 11**，官方语义就是
          * "用来指向**最重要任务**的按钮"）⇒ 实心填充、明确可点。
-         * 填充色取品牌红：既是最强权重，又和家族"黑底 + 红点"的识别锚一致。
-         * 文字色用 `rj_bg`（深/浅色下分别是黑/近白压在红底上，两边对比度都够）。
+         * 填充色取官方系统高亮蓝（`rj_accent`）：最强权重，且与鸿蒙原生一致。
+         * 文字色用 `rj_bg`（深色下黑字压在 #317AF7 上 5.25:1、浅色下白字压在 #0A59F7 上 5.56:1）。
          *
          * ⚠️ `ButtonType.Normal` 显式写死：默认值在 **API 18 变过**
          *    （<18 = Capsule，≥18 = ROUNDED_RECTANGLE），我们覆盖 API 16+，
@@ -343,7 +343,7 @@ struct Index {
       .width('100%')
       .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_XL, bottom: RJ_SP_MD })
 
-      // 坚持写：连续天数 + 今天写没写（今天还没写用红色，直接推动今天的动作）
+      // 坚持写：连续天数 + 今天写没写（今天还没写用强调色，直接推动今天的动作）
       Row() {
         if (this.stats.streak > 0) {
           Text('连续 ' + this.stats.streak + ' 天')
@@ -570,7 +570,7 @@ struct Index {
           ForEach(this.cells(), (cell: MonthCell) => {
             GridItem() {
               /**
-               * 「有日记」的红点：放在数字**正下方**（原来钉在 TopEnd 角上，
+               * 「有日记」的标记点：放在数字**正下方**（原来钉在 TopEnd 角上，
                * 正好压住数字 —— 实拍反馈"红点挡住数字"）。
                * 点位占**固定高度**：没日记的日子用透明圆占位，
                * 这样有/没日记的数字保持在同一条水平线上，不会上下跳。

@@ -287,7 +287,8 @@ struct Settings {
       //    那属于"承诺不一致"，比缺功能更伤信任。图片请用加密备份。
       Text('TXT / Markdown 是明文、不加密，且不含图片（只留占位）—— 图片请用上面的加密备份')
         .fontSize(RJ_FS_META)
-        .fontColor($r('app.color.rj_accent'))
+        // 明文风险是**警告**语义 ⇒ 警示色，不用强调色
+        .fontColor($r('app.color.rj_danger'))
         .width('100%')
         .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_LG })
 

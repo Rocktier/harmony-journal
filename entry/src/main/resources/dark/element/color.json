@@ -37,6 +37,10 @@
       "value": "#317AF7"
     },
     {
+      "name": "rj_danger",
+      "value": "#FF4A3D"
+    },
+    {
       "name": "rj_sel",
       "value": "#33317AF7"
     }

@@ -150,9 +150,10 @@ struct Unlock {
         })
 
       if (this.error.length > 0) {
+        // 错误提示用警示色（rj_danger），不用强调色 —— 蓝色是"重要"，红色才是"错了"
         Text(this.error)
           .fontSize(RJ_FS_CAPTION)
-          .fontColor($r('app.color.rj_accent'))
+          .fontColor($r('app.color.rj_danger'))
           .margin({ top: RJ_SP_XL })
       }
       Text('数据只在这台设备上 · AES-256-GCM 加密')
