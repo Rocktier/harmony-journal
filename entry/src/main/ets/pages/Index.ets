@@ -284,8 +284,8 @@ struct Index {
           Text('DEV')
             .fontSize(RJ_FS_META)
             .fontFamily('monospace')
-            .fontColor($r('app.color.rj_accent'))
-            .border({ width: 1, color: $r('app.color.rj_accent') })
+            .fontColor($r('app.color.rj_text3'))
+            .border({ width: 1, color: $r('app.color.rj_text3') })
             .padding({ left: RJ_SP_SM, right: RJ_SP_SM, top: RJ_SP_XS, bottom: RJ_SP_XS })
             .margin({ left: RJ_SP_MD })
         }
@@ -358,25 +358,28 @@ struct Index {
           .margin({ left: RJ_SP_LG })
         Blank()
         if (!this.stats.wroteToday) {
+          // 同理：提示性文字不用 accent（主行动"写今天"才是唯一的蓝）
           Text('今天还没写')
             .fontSize(RJ_FS_META)
             .fontFamily('monospace')
-            .fontColor($r('app.color.rj_accent'))
+            .fontColor($r('app.color.rj_text2'))
         }
       }
       .width('100%')
       .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_MD })
 
       // 备份提醒：生命线靠自觉是不成立的，到期提醒一次（不自动写文件、不重复骚扰）
+      // ⚠️ 用 text2 不用 accent：accent 是**主行动专属**（写今天），提醒性文字也抢蓝色
+      //    会让"最重要的那个按钮"不再最显眼（2026-10-12 模拟器实测后的收尾）
       if (this.backupDue) {
         Row() {
           Text('距上次备份超过 30 天了 · 去备份')
             .fontSize(RJ_FS_CAPTION)
-            .fontColor($r('app.color.rj_accent'))
+            .fontColor($r('app.color.rj_text2'))
             .layoutWeight(1)
           Text('去备份 ›')
             .fontSize(RJ_FS_CAPTION)
-            .fontColor($r('app.color.rj_accent'))
+            .fontColor($r('app.color.rj_text2'))
             .onClick(() => {
               router.pushUrl({ url: 'pages/Settings' });
             })
@@ -459,10 +462,11 @@ struct Index {
             Row() {
               Column() {
                 Row() {
+                  // 「N 年前」是信息标签不是行动 ⇒ text3（accent 留给主行动）
                   Text(card.years)
                     .fontSize(RJ_FS_META)
                     .fontFamily('monospace')
-                    .fontColor($r('app.color.rj_accent'))
+                    .fontColor($r('app.color.rj_text3'))
                   Text(card.meta.date)
                     .fontSize(RJ_FS_META)
                     .fontFamily('monospace')

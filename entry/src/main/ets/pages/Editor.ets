@@ -453,8 +453,11 @@ struct Editor {
   }
 
   private setSpanStyle(bold: boolean, italic: boolean): void {
+    // ⚠️ fontColor 必须给：RichEditor 的输入默认样式是**黑色**，深色模式下
+    //    不设字色 = 黑字黑底盲打（2026-10-12 模拟器实测确认过这条链路）。
+    // ⚠️ fontSize 取 token RJ_FS_BODY：此前这里硬编码 16，与注释/规范的 17 不一致。
     this.controller.setTypingStyle({
-      fontSize: 16,
+      fontSize: RJ_FS_BODY,
       fontColor: $r('app.color.rj_text'),
       fontWeight: bold ? FontWeight.Bold : FontWeight.Normal,
       fontStyle: italic ? FontStyle.Italic : FontStyle.Normal
@@ -535,8 +538,8 @@ struct Editor {
           .fontColor($r('app.color.rj_text2'))
           .backgroundColor($r('app.color.rj_card'))
           .borderRadius(RJ_RADIUS_SM)
-          .width(36)
-          .height(36)
+          .width(40)
+          .height(40)
           .margin({ left: RJ_SP_MD })
           .onClick(() => {
             this.toggleAppearance();
@@ -653,9 +656,10 @@ struct Editor {
           .backgroundColor($r('app.color.rj_card'))
           .fontColor($r('app.color.rj_text'))
           .placeholderColor($r('app.color.rj_text3'))
-          .height(28)
-          // 热区补到 44vp（28 的框太小，手指难按；视觉不变）
-          .responseRegion({ x: 0, y: -8, width: '100%', height: 44 })
+          // 与左侧心情下拉**等高**（同一行的两个控件不一样高很别扭）；40dp 仍不足 44，
+          // 热区用 responseRegion 补
+          .height(40)
+          .responseRegion({ x: 0, y: -2, width: '100%', height: 44 })
           .layoutWeight(1)
           .margin({ left: RJ_SP_MD })
           .onChange((v: string) => {
@@ -752,7 +756,12 @@ struct Editor {
       RichEditor(this.options)
         .layoutWeight(1)
         .width('100%')
-        .backgroundColor(Color.Transparent)
+        // ⚠️ 必须显式给底色：系统 RichEditor 默认**白底**，设 `Color.Transparent`
+        // 也挡不住（2026-10-12 模拟器实测：深色模式下正文区 42.7% 白、底部状态区
+        // 84.6% 白 —— 晚上写日记等于对着一片白，正是党哥要解决的那个场景）。
+        // （RichEditorAttribute 没有 fontColor 属性 ⇒ 默认字色管不了，只能管底色；
+        //   用户输入文字的色由内容 span 自带 style 决定，见 restore/addTextSpan 处）
+        .backgroundColor($r('app.color.rj_bg'))
         .caretColor($r('app.color.rj_accent'))
         .selectedBackgroundColor($r('app.color.rj_sel'))
         /**
