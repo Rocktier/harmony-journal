@@ -208,13 +208,16 @@ export interface MonthCell {
   inMonth: boolean;
   /** 这天有没有日记（打点用） */
   hasNote: boolean;
+  /** 是不是今天（月历上唯一该被认出来的格子；空 today = 全 false，测试/历史月用） */
+  isToday: boolean;
 }
 
 /**
  * 生成月视图网格（**周一为一周开头**，6 行 × 7 列 = 42 格，行数固定）：
  * 行数固定才能保证切换月份时日历不跳动（高度变化会让界面抖）。
+ * @param today 今天的日期键（`yyyy-MM-dd`）；传空串 = 没有任何格子标记为今天
  */
-export function monthGrid(monthKey: string, dates: string[]): MonthCell[] {
+export function monthGrid(monthKey: string, dates: string[], today: string = ''): MonthCell[] {
   const p: YearMonth = parseMonth(monthKey);
   const set: Set<string> = new Set<string>(dates);
   const first: Date = new Date(p.year, p.month - 1, 1);
@@ -232,7 +235,8 @@ export function monthGrid(monthKey: string, dates: string[]): MonthCell[] {
       date: date,
       day: inMonth ? dayNum : new Date(date + 'T00:00:00').getDate(),
       inMonth: inMonth,
-      hasNote: set.has(date)
+      hasNote: set.has(date),
+      isToday: today.length > 0 && date === today
     };
     cells.push(cell);
   }

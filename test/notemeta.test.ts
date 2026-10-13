@@ -68,6 +68,18 @@ test('月视图：9 月只有 30 天，第 31 格开始是下月（inMonth=false
   assert.equal(inMonthCount, 30);
 });
 
+test('月视图：今天被认出来（isToday），且全月只有一格', () => {
+  const cells: MonthCell[] = monthGrid('2026-10', ['2026-10-13'], '2026-10-13');
+  const today: MonthCell[] = cells.filter((c: MonthCell) => c.isToday);
+  assert.equal(today.length, 1);
+  assert.equal(today[0].date, '2026-10-13');
+  // 今天同时有日记 ⇒ 绿片 + 绿点并存（互不遮挡）
+  assert.equal(today[0].hasNote, true);
+  // 不传 today ⇒ 没有格子是今天（历史月/测试兼容）
+  const none: MonthCell[] = monthGrid('2026-10', [], '');
+  assert.equal(none.filter((c: MonthCell) => c.isToday).length, 0);
+});
+
 test('id 生成：可用作文件名、两次不同、能避开已占用的', () => {
   const a: string = newNoteId(new Set<string>());
   const b: string = newNoteId(new Set<string>());

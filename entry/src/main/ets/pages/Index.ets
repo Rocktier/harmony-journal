@@ -189,7 +189,9 @@ struct Index {
    *    所以这里**只渲染实际存在的行**：模型不变，界面不浪费那一行空间。
    */
   private cells(): MonthCell[] {
-    return monthGrid(this.monthKey, this.store.allDates()).slice(0, this.calRows() * 7);
+    // 第三参 today：月历上"今天"必须被认出来（第一性原则 —— 日记 app 的一切围绕今天，
+    // 而原来今天和其他 30 个格子长得一模一样，用户每天第一眼找不到"今天"）
+    return monthGrid(this.monthKey, this.store.allDates(), todayKey()).slice(0, this.calRows() * 7);
   }
 
   /**
@@ -462,11 +464,12 @@ struct Index {
             Row() {
               Column() {
                 Row() {
-                  // 「N 年前」是信息标签不是行动 ⇒ text3（accent 留给主行动）
+                  // 「N 年前」是**时光的印记** ⇒ 品牌松烟绿（信息标签不是行动，
+                  // 但它值得被看见 —— 这是全应用最有"时间复利"感的一行字）
                   Text(card.years)
                     .fontSize(RJ_FS_META)
                     .fontFamily('monospace')
-                    .fontColor($r('app.color.rj_text3'))
+                    .fontColor($r('app.color.rj_brand'))
                   Text(card.meta.date)
                     .fontSize(RJ_FS_META)
                     .fontFamily('monospace')
@@ -583,9 +586,16 @@ struct Index {
                 Text(cell.day.toString())
                   .fontSize(RJ_FS_CALLOUT)
                   .fontFamily('monospace')
-                  .fontColor(cell.inMonth ? $r('app.color.rj_text') : $r('app.color.rj_text3'))
+                  .fontColor(cell.isToday ? $r('app.color.rj_bg')
+                    : (cell.inMonth ? $r('app.color.rj_text') : $r('app.color.rj_text3')))
                   .textAlign(TextAlign.Center)
                   .width('100%')
+                  // 今天 = 一片松烟绿圆角底（"待钤印"的那一格）。
+                  // 为什么用品牌绿不用操作蓝：日历格不是按钮；且蓝专属「写今天」大按钮，
+                  // 绿是印记色 —— "今天是即将被钤印的一天"，语义自洽。
+                  // 有日记的今天 = 绿片 + 下方绿点，未写的今天 = 绿片（等你）。
+                  .backgroundColor(cell.isToday ? $r('app.color.rj_brand') : Color.Transparent)
+                  .borderRadius(cell.isToday ? RJ_RADIUS_SM : 0)
                 Circle({ width: 5, height: 5 })
                   // 「这一天钤过印」= **内容印记**，取品牌松烟绿（rj_brand），不是操作蓝。
                   // 纪律：rj_accent 只给"可以点"的东西（写今天/链接/保存），不可点的一个蓝不许有
@@ -640,7 +650,8 @@ struct Index {
                   if (row.meta !== null && row.meta.favorite) {
                     Text('★')
                       .fontSize(RJ_FS_CALLOUT)
-                      .fontColor($r('app.color.rj_accent'))
+                      // 收藏 = 钤印 ⇒ 品牌绿（同 Editor 收藏星、同日历日期点，三处一个色）
+                      .fontColor($r('app.color.rj_brand'))
                       .margin({ left: RJ_SP_LG })
                   }
                   Blank()
@@ -729,7 +740,8 @@ struct Index {
                       if (row.meta.favorite) {
                         Text('★')
                           .fontSize(RJ_FS_CALLOUT)
-                          .fontColor($r('app.color.rj_accent'))
+                          // 收藏 = 钤印 ⇒ 品牌绿（与月视图 ★、Editor 收藏星、日历日期点四处同色）
+                          .fontColor($r('app.color.rj_brand'))
                           .margin({ left: RJ_SP_MD })
                       }
                       Blank()

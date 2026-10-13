@@ -87,12 +87,42 @@ struct Unlock {
 
   build() {
     Column() {
+      /**
+       * 钤印方章（2026-10-13「纸与印」Phase 22）—— **Rock私记 的脸**。
+       *
+       * 第一性原则：日记 app 的一切围绕"今天"，而这是用户每天打开 app 的第一屏。
+       * 原来这屏只有标题 + 密码框：零品牌、零仪式感，中部以下全是空白 —— 用户记不住我们。
+       * 印章是中文书写传统里"这篇我钤过了"的意象：古印皆方 + 松烟绿描边 +「记」字。
+       * ⚠️ 不用圆形笑脸（Daylio 的脸）、不用黄底数字（Day One 的脸）、不用锁
+       *    （锁在 Logo 里；印记与锁是两回事：印记 = 我来过，锁 = 它属于我）。
+       */
+      Stack() {
+        Text('记')
+          .fontSize(RJ_FS_HEADING)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.rj_brand'))
+      }
+      .width(56)
+      .height(56)
+      .border({ width: 1.5, color: $r('app.color.rj_brand'), radius: 10 })
+      .margin({ top: RJ_SP_TOP_INSET })
+
       Text('Rock私记')
         .fontSize(RJ_FS_DISPLAY)
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.rj_text'))
         .letterSpacing(2)
-        .margin({ top: RJ_SP_TOP_INSET, bottom: RJ_SP_MD })
+        .margin({ top: RJ_SP_XL, bottom: RJ_SP_SM })
+
+      // 今天：敲密码前先让用户进到"今天"的语境（仪式感）；等宽是家族数码纪律
+      Text(this.todayLabel())
+        .fontSize(RJ_FS_META)
+        .fontFamily('monospace')
+        .fontColor($r('app.color.rj_text2'))
+
+      // 弹性空间：上（印记/今天）与中（表单）两极拉开，表单落在视觉中心
+      Blank()
+
       Text(this.firstRun ? '设置主密码' : '输入主密码解锁')
         .fontSize(RJ_FS_CALLOUT)
         .fontColor($r('app.color.rj_text2'))
@@ -164,15 +194,25 @@ struct Unlock {
           .fontColor($r('app.color.rj_danger'))
           .margin({ top: RJ_SP_XL })
       }
+      // 弹性空间：把信任锚压到屏幕底部 —— 它原来是半空里飘的一行小字，
+      // 而"数据只在这台设备上"是全 App 最重要的信任承诺之一，不该飘着
+      Blank()
       Text('数据只在这台设备上 · AES-256-GCM 加密')
         .fontSize(RJ_FS_META)
         .fontColor($r('app.color.rj_text3'))
-        .margin({ bottom: RJ_SP_VOID, top: RJ_SP_VOID })
+        .margin({ bottom: RJ_SP_VOID })
     }
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.rj_bg'))
     .justifyContent(FlexAlign.Start)
+  }
+
+  /** 今天：「10 月 13 日 · 星期二」（等宽感由 fontFamily 负责，这里只管文案） */
+  private todayLabel(): string {
+    const d: Date = new Date();
+    const week: string[] = ['日', '一', '二', '三', '四', '五', '六'];
+    return (d.getMonth() + 1) + ' 月 ' + d.getDate() + ' 日 · 星期' + week[d.getDay()];
   }
 
   /**
