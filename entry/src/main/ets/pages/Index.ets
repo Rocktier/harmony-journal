@@ -13,7 +13,8 @@ import {
 } from '../data/NoteMeta';
 import { NoteStore } from '../data/NoteStore';
 import { getStore } from '../data/NoteStoreHolder';
-import { RJ_FS_BODY, RJ_FS_CALLOUT, RJ_FS_CAPTION, RJ_FS_META, RJ_FS_TITLE, RJ_RADIUS_LG, RJ_RADIUS_SM, RJ_SP_LG, RJ_SP_MD, RJ_SP_SM, RJ_SP_VOID, RJ_SP_VOID_L, RJ_SP_XL, RJ_SP_XS, RJ_SP_XXL, RJ_SP_XXXL } from '../theme/RjTokens';
+import { ViewPrefs, ViewMode } from '../data/ViewPrefs';
+import { RJ_FS_BODY, RJ_FS_CALLOUT, RJ_FS_CAPTION, RJ_FS_META, RJ_FS_TITLE, RJ_RADIUS_LG, RJ_RADIUS_MD, RJ_RADIUS_SM, RJ_SP_LG, RJ_SP_MD, RJ_SP_SM, RJ_SP_VOID, RJ_SP_VOID_L, RJ_SP_XL, RJ_SP_XS, RJ_SP_XXL, RJ_SP_XXXL } from '../theme/RjTokens';
 
 /**
  * 主页面：月视图日历 + 时光时间轴 + 搜索 + 「那年今日」
@@ -86,13 +87,30 @@ struct Index {
   private images: ImageStore = new ImageStore();
   /** 时间轴的惰性数据源（换数据必须 reload 才会重画） */
   private dataSource: TimelineDataSource = new TimelineDataSource();
+  /** 视图偏好持久化（月/时光；2026-10-14 党哥：原来切换不记偏好，退出重进总弹回月视图） */
+  private viewPrefs: ViewPrefs = new ViewPrefs();
   /** 缩略图缓存：ref → 可显示的 uri（解密+落临时文件很贵，一会话内只做一次） */
   private thumbCache: Map<string, string> = new Map<string, string>();
 
   aboutToAppear(): void {
     const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
     this.images.open(ctx.filesDir);
+    // 视图偏好：同步读，首帧就落在用户上次所在（月/时光），不闪默认态
+    this.viewPrefs.open(ctx);
+    this.mode = this.viewPrefs.get();
     this.reload();
+  }
+
+  /**
+   * 切视图（分段控件与滑动手势共用）。
+   * 落偏好 ⇒ 冷启动回到上次所在（党哥 2026-10-14：用户的视图选择不该被反复重置）。
+   */
+  private setMode(m: ViewMode): void {
+    if (this.mode === m) {
+      return;
+    }
+    this.mode = m;
+    this.viewPrefs.set(m);
   }
 
   /**
@@ -329,19 +347,49 @@ struct Index {
             this.open(todayKey());
           })
         /**
-         * 「月/时光」与「设置」是**次要入口** ⇒ `ButtonStyleMode.TEXTUAL`（API 11，
-         * 官方语义"纯文字、无背景"）。让位给「写今天」，视觉层级才立得住。
+         * 「月历 | 时光」**分段控件**（2026-10-14 党哥：原「月/时光」单按钮"转换奇怪"）。
+         *
+         * 原方案病根：一个 TEXTUAL 按钮同时承担"显示当前态"和"切换动作"—— 用户看到
+         * 「月」会以为"点我去月视图"，实际却是"你已经在月视图，点我离开"，反直觉；
+         * 且整页瞬切无空间隐喻、退出重进不记偏好。
+         * 分段控件两边都可见、选中态墨色明确 ⇒ 零学习成本；滑动手势见视图区
+         * （月历左滑进时光、时光右滑回月历）；偏好落 ViewPrefs 冷启动恢复。
+         *
+         * 视觉：纸卡底槽 + 选中段墨填充（与「写今天」同色的实心=可点），
+         * 高度 30 比文字按钮略高但权重仍然让位给「写今天」。
          */
-        Button(this.mode === 'month' ? '月' : '时光', { type: ButtonType.Normal, stateEffect: true })
-          .buttonStyle(ButtonStyleMode.TEXTUAL)
-          .fontSize(RJ_FS_META)
-          .fontFamily('monospace')
-          .fontColor($r('app.color.rj_text3'))
-          .padding({ left: RJ_SP_MD, right: RJ_SP_SM, top: RJ_SP_SM, bottom: RJ_SP_SM })
-          .margin({ right: RJ_SP_MD })
-          .onClick(() => {
-            this.mode = this.mode === 'month' ? 'timeline' : 'month';
-          })
+        Row() {
+          Button('月历', { type: ButtonType.Normal, stateEffect: true })
+            .fontSize(RJ_FS_META)
+            .fontWeight(this.mode === 'month' ? FontWeight.Bold : FontWeight.Normal)
+            .fontColor(this.mode === 'month' ? $r('app.color.rj_bg') : $r('app.color.rj_text3'))
+            .backgroundColor(this.mode === 'month' ? $r('app.color.rj_accent') : Color.Transparent)
+            .layoutWeight(1)
+            .height(30)
+            .borderRadius(RJ_RADIUS_SM)
+            .onClick(() => {
+              this.setMode('month');
+            })
+          Button('时光', { type: ButtonType.Normal, stateEffect: true })
+            .fontSize(RJ_FS_META)
+            .fontWeight(this.mode === 'timeline' ? FontWeight.Bold : FontWeight.Normal)
+            .fontColor(this.mode === 'timeline' ? $r('app.color.rj_bg') : $r('app.color.rj_text3'))
+            .backgroundColor(this.mode === 'timeline' ? $r('app.color.rj_accent') : Color.Transparent)
+            .layoutWeight(1)
+            .height(30)
+            .borderRadius(RJ_RADIUS_SM)
+            .onClick(() => {
+              this.setMode('timeline');
+            })
+        }
+        // 96vp ≈ 288px：顶部一行要塞 标题+写今天+分段+设置（党哥屏 1256px @3x）——
+        // 实测 148vp 把「设置」挤出屏幕、120vp 把 Blank 压成 0（写今天紧贴标题）。
+        // 分段是指示器不是主行动，让位到"不挤且仍有呼吸"的最大宽度。
+        .width(96)
+        .padding(2)
+        .backgroundColor($r('app.color.rj_card'))
+        .borderRadius(RJ_RADIUS_MD)
+        .margin({ right: RJ_SP_MD })
         // 设置（导出备份的生命线入口 —— 藏深了等于没有）
         Button('设置', { type: ButtonType.Normal, stateEffect: true })
           .buttonStyle(ButtonStyleMode.TEXTUAL)
@@ -813,5 +861,24 @@ struct Index {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.rj_bg'))
+    // 视图切换**滑动手势**（2026-10-14 党哥：「月/时光」整页瞬切"转换奇怪"）：
+    // 月历左滑进时光、时光右滑回月历 —— 滑一下给两个视图"并排"的空间隐喻，
+    // 与分段控件双通道（点/滑都行，系统记住偏好）。
+    // ⚠️ 挂根 Column 而非内层 Stack：横滑方向与 List 的纵向滚动**正交**（系统仲裁互不抢），
+    //    与 Button 的 tap 也不冲突（位移超 60vp 才算滑，轻点照常点）。
+    // ⚠️ 搜索中禁用：搜索结果是覆盖层，滑它换视图会更懵（"我滑了却没换？"）。
+    .gesture(
+      PanGesture({ direction: PanDirection.Horizontal, distance: 60 })
+        .onActionEnd((e: GestureEvent) => {
+          if (this.query.length > 0) {
+            return;
+          }
+          if (e.offsetX <= -60) {
+            this.setMode('timeline');
+          } else if (e.offsetX >= 60) {
+            this.setMode('month');
+          }
+        })
+    )
   }
 }
