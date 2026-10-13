@@ -816,7 +816,11 @@ struct Editor {
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_text3'))
         Blank()
-        Text(this.saved ? (this.savedAt.length > 0 ? '已保存 ' + this.savedAt : '已保存') : '未保存…')
+        // 「已钤印」而不是「已保存」：保存是技术动作，钤印是仪式 ——
+        // 这一天的格子盖上了松烟绿的印，这篇就算收好了。与日历印记/收藏★/解锁方章
+        // 同一套语言，用户每次写完都见一次，这就是记忆点（党哥：要让用户记得住我们）。
+        // 未保存对称写作「未钤印…」—— 意会成本低（印 = 盖章收好），且不与绿印记系统矛盾。
+        Text(this.saved ? (this.savedAt.length > 0 ? '已钤印 · ' + this.savedAt : '已钤印') : '未钤印…')
           .fontSize(RJ_FS_META)
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_text3'))
