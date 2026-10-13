@@ -2,11 +2,11 @@
   "color": [
     {
       "name": "start_window_background",
-      "value": "#F1F3F5"
+      "value": "#FAF8F3"
     },
     {
       "name": "rj_bg",
-      "value": "#F1F3F5"
+      "value": "#FAF8F3"
     },
     {
       "name": "rj_text",
@@ -35,6 +35,10 @@
     {
       "name": "rj_accent",
       "value": "#0A59F7"
+    },
+    {
+      "name": "rj_brand",
+      "value": "#2F6B58"
     },
     {
       "name": "rj_danger",

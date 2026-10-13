@@ -518,7 +518,9 @@ struct Editor {
         // 收藏：重要的几篇★住，以后一眼能挑出来
         Button(this.favorite ? '★' : '☆', { type: ButtonType.Normal, stateEffect: true })
           .fontSize(RJ_FS_BODY)
-          .fontColor(this.favorite ? $r('app.color.rj_accent') : $r('app.color.rj_text3'))
+          // 收藏 = 钤印 ⇒ 品牌松烟绿（与日历日期点、列表 ★ 三处同色；
+          // 保存按钮的蓝是"操作"，这个绿是"印记"，分工不混）
+          .fontColor(this.favorite ? $r('app.color.rj_brand') : $r('app.color.rj_text3'))
           .backgroundColor(Color.Transparent)
           .margin({ left: RJ_SP_SM })
           .padding(RJ_SP_SM)

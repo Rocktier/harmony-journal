@@ -587,7 +587,11 @@ struct Index {
                   .textAlign(TextAlign.Center)
                   .width('100%')
                 Circle({ width: 5, height: 5 })
-                  .fill(cell.hasNote ? $r('app.color.rj_accent') : Color.Transparent)
+                  // 「这一天钤过印」= **内容印记**，取品牌松烟绿（rj_brand），不是操作蓝。
+                  // 纪律：rj_accent 只给"可以点"的东西（写今天/链接/保存），不可点的一个蓝不许有
+                  // —— 2026-10-13 党哥拍板走「纸与印」方向（借鉴 Day One 的"台灯下笔记本"原则，
+                  // 不用它的琥珀金答案；松烟绿是中文书写传统里"墨"的颜色，与蓝/红/emoji 心情零冲突）。
+                  .fill(cell.hasNote ? $r('app.color.rj_brand') : Color.Transparent)
                   .margin({ top: RJ_SP_SM })
               }
               .justifyContent(FlexAlign.Center)
