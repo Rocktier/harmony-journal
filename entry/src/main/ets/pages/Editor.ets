@@ -518,7 +518,7 @@ struct Editor {
         // 收藏：重要的几篇★住，以后一眼能挑出来
         Button(this.favorite ? '★' : '☆', { type: ButtonType.Normal, stateEffect: true })
           .fontSize(RJ_FS_BODY)
-          // 收藏 = 钤印 ⇒ 品牌松烟绿（与日历日期点、列表 ★ 三处同色；
+          // 收藏 = 钤印 ⇒ 品牌茶褐（与日历日期点、列表 ★ 三处同色；
           // 保存按钮的蓝是"操作"，这个绿是"印记"，分工不混）
           .fontColor(this.favorite ? $r('app.color.rj_brand') : $r('app.color.rj_text3'))
           .backgroundColor(Color.Transparent)
@@ -817,7 +817,7 @@ struct Editor {
           .fontColor($r('app.color.rj_text3'))
         Blank()
         // 「已钤印」而不是「已保存」：保存是技术动作，钤印是仪式 ——
-        // 这一天的格子盖上了松烟绿的印，这篇就算收好了。与日历印记/收藏★/解锁方章
+        // 这一天的格子盖上了茶褐的印，这篇就算收好了。与日历印记/收藏★/解锁方章
         // 同一套语言，用户每次写完都见一次，这就是记忆点（党哥：要让用户记得住我们）。
         // 未保存对称写作「未钤印…」—— 意会成本低（印 = 盖章收好），且不与绿印记系统矛盾。
         // ⚠️ words > 0 才配称"钤过印"：空白新日记（saved 初值 true）显示"已钤印"是**谎报**——

@@ -64,7 +64,7 @@ struct Settings {
       .fontSize(RJ_FS_META)
       .fontWeight(this.appearance === mode ? FontWeight.Bold : FontWeight.Normal)
       .fontColor(this.appearance === mode ? $r('app.color.rj_bg') : $r('app.color.rj_text3'))
-      // 自绘选中态用品牌绿（钤印感）；系统原生控件（Switch/主按钮）才用系统蓝
+      // 自绘选中态用品牌茶褐（钤印感）；chrome（Switch/主按钮）用墨色，全 app 只有茶褐一个彩
       .backgroundColor(this.appearance === mode ? $r('app.color.rj_brand') : $r('app.color.rj_card'))
       .padding({ left: RJ_SP_LG, right: RJ_SP_LG, top: RJ_SP_SM, bottom: RJ_SP_SM })
       .margin({ left: RJ_SP_SM })

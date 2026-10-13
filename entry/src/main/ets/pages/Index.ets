@@ -18,7 +18,7 @@ import { RJ_FS_BODY, RJ_FS_CALLOUT, RJ_FS_CAPTION, RJ_FS_META, RJ_FS_TITLE, RJ_R
 /**
  * 主页面：月视图日历 + 时光时间轴 + 搜索 + 「那年今日」
  *
- * 家族观感：纯黑底、白字，官方系统蓝做"有日记"的标记（与图标同源）。
+ * 家族观感（2026-10-14「纸·墨·茶」）：纸底、墨字，**茶褐**做"有日记"的印记（唯一彩色）。
  *
  * ⚠️ Phase 10b（回头看）的用户视角：
  *   写完之后内容大概率再也不会被打开 —— 所以主页要**让过去自己出现**：
@@ -307,8 +307,10 @@ struct Index {
          *
          * 用 `ButtonStyleMode.EMPHASIZED`（**API 11**，官方语义就是
          * "用来指向**最重要任务**的按钮"）⇒ 实心填充、明确可点。
-         * 填充色取官方系统高亮蓝（`rj_accent`）：最强权重，且与鸿蒙原生一致。
-         * 文字色用 `rj_bg`（深色下黑字压在 #317AF7 上 5.25:1、浅色下白字压在 #0A59F7 上 5.56:1）。
+         * 填充色取 `rj_accent` = **墨色**（浅 #191919 / 深 #F0EBE0）：最强权重，且纸感统一。
+         * （2026-10-14「纸·墨·茶」转向：accent 原为官方系统蓝，因"系统蓝 vs app 蓝分不清"
+         *  及"蓝绿同屏发浑"两个问题，chrome 全改中性墨，彩色只留茶褐印记一彩。）
+         * 文字色用 `rj_bg`（浅色下纸白字压墨钮 16.9:1、深色下黑字压暖白钮 18:1）。
          *
          * ⚠️ `ButtonType.Normal` 显式写死：默认值在 **API 18 变过**
          *    （<18 = Capsule，≥18 = ROUNDED_RECTANGLE），我们覆盖 API 16+，
@@ -473,7 +475,7 @@ struct Index {
             Row() {
               Column() {
                 Row() {
-                  // 「N 年前」是**时光的印记** ⇒ 品牌松烟绿（信息标签不是行动，
+                  // 「N 年前」是**时光的印记** ⇒ 品牌茶褐（信息标签不是行动，
                   // 但它值得被看见 —— 这是全应用最有"时间复利"感的一行字）
                   Text(card.years)
                     .fontSize(RJ_FS_META)
@@ -599,17 +601,17 @@ struct Index {
                     : (cell.inMonth ? $r('app.color.rj_text') : $r('app.color.rj_text3')))
                   .textAlign(TextAlign.Center)
                   .width('100%')
-                  // 今天 = 一片松烟绿圆角底（"待钤印"的那一格）。
-                  // 为什么用品牌绿不用操作蓝：日历格不是按钮；且蓝专属「写今天」大按钮，
+                  // 今天 = 一片茶褐圆角底（"待钤印"的那一格）。
+                  // 为什么用品牌茶褐不用操作蓝：日历格不是按钮；且蓝专属「写今天」大按钮，
                   // 绿是印记色 —— "今天是即将被钤印的一天"，语义自洽。
                   // 有日记的今天 = 绿片 + 下方绿点，未写的今天 = 绿片（等你）。
                   .backgroundColor(cell.isToday ? $r('app.color.rj_brand') : Color.Transparent)
                   .borderRadius(cell.isToday ? RJ_RADIUS_SM : 0)
                 Circle({ width: 5, height: 5 })
-                  // 「这一天钤过印」= **内容印记**，取品牌松烟绿（rj_brand），不是操作蓝。
+                  // 「这一天钤过印」= **内容印记**，取品牌茶褐（rj_brand），不是操作蓝。
                   // 纪律：rj_accent 只给"可以点"的东西（写今天/链接/保存），不可点的一个蓝不许有
                   // —— 2026-10-13 党哥拍板走「纸与印」方向（借鉴 Day One 的"台灯下笔记本"原则，
-                  // 不用它的琥珀金答案；松烟绿是中文书写传统里"墨"的颜色，与蓝/红/emoji 心情零冲突）。
+                  // 不用它的琥珀金答案；茶褐是旧笔记本/牛皮纸的色，与警示红/emoji 心情分得开，全 app 唯一彩色）。
                   .fill(cell.hasNote ? $r('app.color.rj_brand') : Color.Transparent)
                   .margin({ top: RJ_SP_SM })
               }
@@ -659,7 +661,7 @@ struct Index {
                   if (row.meta !== null && row.meta.favorite) {
                     Text('★')
                       .fontSize(RJ_FS_CALLOUT)
-                      // 收藏 = 钤印 ⇒ 品牌绿（同 Editor 收藏星、同日历日期点，三处一个色）
+                      // 收藏 = 钤印 ⇒ 品牌茶褐（同 Editor 收藏星、同日历日期点，三处一个色）
                       .fontColor($r('app.color.rj_brand'))
                       .margin({ left: RJ_SP_LG })
                   }
@@ -749,7 +751,7 @@ struct Index {
                       if (row.meta.favorite) {
                         Text('★')
                           .fontSize(RJ_FS_CALLOUT)
-                          // 收藏 = 钤印 ⇒ 品牌绿（与月视图 ★、Editor 收藏星、日历日期点四处同色）
+                          // 收藏 = 钤印 ⇒ 品牌茶褐（与月视图 ★、Editor 收藏星、日历日期点四处同色）
                           .fontColor($r('app.color.rj_brand'))
                           .margin({ left: RJ_SP_MD })
                       }

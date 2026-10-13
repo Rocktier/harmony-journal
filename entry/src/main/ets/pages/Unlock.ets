@@ -92,7 +92,7 @@ struct Unlock {
        *
        * 第一性原则：日记 app 的一切围绕"今天"，而这是用户每天打开 app 的第一屏。
        * 原来这屏只有标题 + 密码框：零品牌、零仪式感，中部以下全是空白 —— 用户记不住我们。
-       * 印章是中文书写传统里"这篇我钤过了"的意象：古印皆方 + 松烟绿描边 +「记」字。
+       * 印章是中文书写传统里"这篇我钤过了"的意象：古印皆方 + 茶褐描边 +「记」字。
        * ⚠️ 不用圆形笑脸（Daylio 的脸）、不用黄底数字（Day One 的脸）、不用锁
        *    （锁在 Logo 里；印记与锁是两回事：印记 = 我来过，锁 = 它属于我）。
        */
@@ -156,7 +156,7 @@ struct Unlock {
       }
 
       if (!this.firstRun && this.bioAvailable) {
-        // 生物解锁 = **主行动**（首选路径）：官方 EMPHASIZED + 系统蓝实心
+        // 生物解锁 = **主行动**（首选路径）：官方 EMPHASIZED + 墨色实心（纸·墨·茶：chrome 全中性）
         Button('使用指纹 / 面容解锁', { type: ButtonType.Normal, stateEffect: true })
           .buttonStyle(ButtonStyleMode.EMPHASIZED)
           .fontSize(RJ_FS_HEADING)

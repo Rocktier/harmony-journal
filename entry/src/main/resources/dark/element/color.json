@@ -34,11 +34,11 @@
     },
     {
       "name": "rj_accent",
-      "value": "#317AF7"
+      "value": "#F0EBE0"
     },
     {
       "name": "rj_brand",
-      "value": "#6FA892"
+      "value": "#C48A5E"
     },
     {
       "name": "rj_danger",
@@ -46,7 +46,7 @@
     },
     {
       "name": "rj_sel",
-      "value": "#33317AF7"
+      "value": "#33F0EBE0"
     }
   ]
 }
