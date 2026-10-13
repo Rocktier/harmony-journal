@@ -101,6 +101,15 @@ struct Index {
    */
   onPageShow(): void {
     this.reload();
+    // **双保险**（2026-10-13 模拟器实测抓到，与 Rock阅读 进度 bug 同构）：
+    // router.back 时本页 onPageShow 与 Editor.aboutToDisappear 的 save() **顺序不保证** ——
+    // onPageShow 先跑就会读到旧索引（实拍：给今天的日记加标签/收藏后返回，列表不刷新，
+    // 重进编辑器却发现数据都在 —— 索引是新的，只是首页读早了）。
+    // 短延时再拉一次，确保读库落在 Editor 落库之后。代价：多一次内存索引读取（零 IO）。
+    setTimeout(() => {
+      hilog.info(DOMAIN, TAG, 'onPageShow deferred reload fired');
+      this.reload();
+    }, 80);
   }
 
   private reload(): void {

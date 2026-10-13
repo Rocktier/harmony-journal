@@ -820,7 +820,12 @@ struct Editor {
         // 这一天的格子盖上了松烟绿的印，这篇就算收好了。与日历印记/收藏★/解锁方章
         // 同一套语言，用户每次写完都见一次，这就是记忆点（党哥：要让用户记得住我们）。
         // 未保存对称写作「未钤印…」—— 意会成本低（印 = 盖章收好），且不与绿印记系统矛盾。
-        Text(this.saved ? (this.savedAt.length > 0 ? '已钤印 · ' + this.savedAt : '已钤印') : '未钤印…')
+        // ⚠️ words > 0 才配称"钤过印"：空白新日记（saved 初值 true）显示"已钤印"是**谎报**——
+        //    啥都没写就说盖了印，用户会困惑（2026-10-13 模拟器实测抓到）。
+        // （build 里不能写局部 const —— ArkTS 只许 UI 语法，故内联三目）
+        Text((this.saved && this.words > 0)
+          ? (this.savedAt.length > 0 ? '已钤印 · ' + this.savedAt : '已钤印')
+          : '未钤印…')
           .fontSize(RJ_FS_META)
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_text3'))
