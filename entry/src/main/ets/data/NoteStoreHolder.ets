@@ -98,10 +98,15 @@ export async function setupVault(password: string): Promise<boolean> {
  * ⚠️ 与 DevFlags.DEV_UNLOCK_BYPASS 无关：正式版只用用户输入的密码。
  */
 export async function unlockWith(password: string): Promise<boolean> {
+  // ★ legacy 兜底**只许发生在"没有密码备份文件"的真老库**（10a 之前）。
+  // ⚠️ 2026-10-14 模拟器实测的教训：vault_pwd.key **存在但解不开**（salt 不匹配/文件损坏）
+  //   时，旧逻辑会 fallback 到 legacy —— PBKDF2 总能算出一个 key，于是"假成功"，
+  //   最后索引解密失败报「密码不正确」，把"数据损坏"误导成"你密码错了"，
+  //   用户会反复试密码（真相：该从备份恢复）。现在按文件存在性分流：
+  //   文件不在 ⇒ 老库，走 legacy；文件在但解不开 ⇒ 直接判失败，不假成功。
+  const hasPwdBackup: boolean = fs.accessSync(vaultRoot + '/' + 'vault_pwd.key');
   let master: Uint8Array | null = await recoverByPassword(password, vaultSalt, vaultRoot);
-  if (master === null) {
-    // ★ 老库（10a 之前）没有 vault_pwd.key，主密钥就是 PBKDF2(密码,salt)。
-    //   不兼容这一条 = 老用户升级后数据全打不开（真机实拍抓到的升级事故）。
+  if (master === null && !hasPwdBackup) {
     master = await recoverLegacy(password, vaultSalt, vaultRoot);
   }
   if (master === null) {
