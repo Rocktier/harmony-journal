@@ -590,8 +590,11 @@ struct Index {
                   }
                 }
                 if (card.preview.length > 0) {
+                  // 摘要用 serif（2026-10-15 党哥：读的界面要"纸质书信"质感）——
+                  // 衬线是纸上阅读的笔画语言；系统无衬线中文字体时自动回退无衬线，不摔。
                   Text(card.preview)
                     .fontSize(RJ_FS_CALLOUT)
+                    .fontFamily('serif')
                     .fontColor($r('app.color.rj_text'))
                     .margin({ top: RJ_SP_SM })
                     .maxLines(2)
@@ -781,8 +784,10 @@ struct Index {
                 }
                 // 摘要来自索引缓存 ⇒ 零额外 IO，月视图也能"看到自己写过的话"
                 if (row.meta !== null && row.meta.preview.length > 0) {
+                  // serif = 纸上阅读的笔画语言（党哥 2026-10-15：读的界面要纸质书信质感）
                   Text(row.meta.preview)
                     .fontSize(RJ_FS_CALLOUT)
+                    .fontFamily('serif')
                     .fontColor($r('app.color.rj_text'))
                     .margin({ top: RJ_SP_SM })
                     .maxLines(2)
@@ -868,10 +873,12 @@ struct Index {
                         .fontColor($r('app.color.rj_text3'))
                         .margin({ top: RJ_SP_SM })
                     }
-                    // 摘要来自索引缓存（零额外 IO）；老数据没有 ⇒ 这一行就没有，不硬凑
+                    // 摘要来自索引缓存（零额外 IO）；老数据没有 ⇒ 这一行就没有，不硬凑。
+                    // serif = 纸上阅读的笔画语言（党哥 2026-10-15：读的界面要纸质书信质感）
                     if (row.meta.preview.length > 0) {
                       Text(row.meta.preview)
                         .fontSize(RJ_FS_CALLOUT)
+                        .fontFamily('serif')
                         .fontColor($r('app.color.rj_text'))
                         .margin({ top: RJ_SP_SM })
                         .maxLines(2)
