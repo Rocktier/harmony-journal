@@ -41,6 +41,22 @@
       "value": "#C48A5E"
     },
     {
+      "name": "rj_heat1",
+      "value": "#3D2E24"
+    },
+    {
+      "name": "rj_heat2",
+      "value": "#5C4634"
+    },
+    {
+      "name": "rj_heat3",
+      "value": "#8A6547"
+    },
+    {
+      "name": "rj_heat4",
+      "value": "#C48A5E"
+    },
+    {
       "name": "rj_danger",
       "value": "#FF4A3D"
     },

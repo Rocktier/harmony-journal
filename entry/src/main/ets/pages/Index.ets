@@ -217,8 +217,44 @@ struct Index {
    */
   private cells(): MonthCell[] {
     // 第三参 today：月历上"今天"必须被认出来（第一性原则 —— 日记 app 的一切围绕今天，
-    // 而原来今天和其他 30 个格子长得一模一样，用户每天第一眼找不到"今天"）
-    return monthGrid(this.monthKey, this.store.allDates(), todayKey()).slice(0, this.calRows() * 7);
+    // 而原来今天和其他 30 个格子长得一模一样，用户每天第一眼找不到"今天"）。
+    // 第四参 wordsMap：当天总字数 ⇒ 格子茶褐色阶（Booka/GitHub 贡献图模式：深浅=当天量）。
+    const wordsMap: Record<string, number> = {};
+    for (let i: number = 0; i < this.metas.length; i++) {
+      const d: string = this.metas[i].date;
+      wordsMap[d] = (wordsMap[d] !== undefined ? wordsMap[d] : 0) + this.metas[i].words;
+    }
+    return monthGrid(this.monthKey, this.store.allDates(), todayKey(), wordsMap).slice(0, this.calRows() * 7);
+  }
+
+  /**
+   * 热度色阶填充（2026-10-15 借鉴 Booka/GitHub 贡献图：**颜色深浅 = 当天写作量**）。
+   * 茶褐色阶 4 档（全 app 唯一彩色家族）：1-99 淡 / 100-399 中淡 / 400-799 中深 / 800+ 深。
+   * 阈值取"努力看得见但不制造焦虑"：80 字一小段也有一格淡印（写了就算），
+   * 800+ 长文才拿最深（和 brand 同色，那是"重度倾诉"的一天）。
+   */
+  private heatFill(cell: MonthCell): ResourceColor {
+    if (!cell.hasNote) {
+      return Color.Transparent;
+    }
+    if (cell.words >= 800) {
+      return $r('app.color.rj_heat4');
+    }
+    if (cell.words >= 400) {
+      return $r('app.color.rj_heat3');
+    }
+    if (cell.words >= 100) {
+      return $r('app.color.rj_heat2');
+    }
+    return $r('app.color.rj_heat1');
+  }
+
+  /** 热度字色：深底（400+ 的 3/4 档）纸白字、其余墨字；对比度全部 ≥ 4.5:1 */
+  private heatText(cell: MonthCell): ResourceColor {
+    if (cell.hasNote && cell.words >= 400) {
+      return $r('app.color.rj_bg');
+    }
+    return cell.inMonth ? $r('app.color.rj_text') : $r('app.color.rj_text3');
   }
 
   /**
@@ -323,8 +359,12 @@ struct Index {
          * 「写今天」—— 这是本应用**唯一一个"创造"动作**，也是一天里最高频的动作，
          * 所以它必须拿最高视觉权重：不该缩在日历和列表下面，也不该只是红字当链接。
          *
-         * 用 `ButtonStyleMode.EMPHASIZED`（**API 11**，官方语义就是
-         * "用来指向**最重要任务**的按钮"）⇒ 实心填充、明确可点。
+         * 用 `ButtonType.Normal` + **自绘实心**（墨底/纸白字/大圆角）。
+         * ⚠️ 2026-10-14 实测教训：**不能用 `buttonStyle(EMPHASIZED)`** —— 系统强调样式
+         *    会用它自己的背景规则**覆盖**我们的 `backgroundColor`（墨底被冲成白色，
+         *    配纸白字 = 整个按钮看不见字，党哥原话"两个三个点"就是指这个）。
+         *    自绘同样有按压反馈（stateEffect），样式还完全可控。
+         *
          * 填充色取 `rj_accent` = **墨色**（浅 #191919 / 深 #F0EBE0）：最强权重，且纸感统一。
          * （2026-10-14「纸·墨·茶」转向：accent 原为官方系统蓝，因"系统蓝 vs app 蓝分不清"
          *  及"蓝绿同屏发浑"两个问题，chrome 全改中性墨，彩色只留茶褐印记一彩。）
@@ -335,14 +375,13 @@ struct Index {
          *    不写死则不同版本设备上形状不一致。圆角另外显式给（API 7 的通用属性）。
          */
         Button('写今天', { type: ButtonType.Normal, stateEffect: true })
-          .buttonStyle(ButtonStyleMode.EMPHASIZED)
           .backgroundColor($r('app.color.rj_accent'))
           .fontColor($r('app.color.rj_bg'))
           .fontSize(RJ_FS_CAPTION)
           .fontWeight(FontWeight.Bold)
           .borderRadius(RJ_RADIUS_LG)
-          .padding({ left: RJ_SP_XL, right: RJ_SP_XL, top: RJ_SP_MD, bottom: RJ_SP_MD })
-          .margin({ right: RJ_SP_LG })
+          .padding({ left: RJ_SP_LG, right: RJ_SP_LG, top: RJ_SP_SM, bottom: RJ_SP_SM })
+          .margin({ right: RJ_SP_MD })
           .onClick(() => {
             this.open(todayKey());
           })
@@ -355,17 +394,27 @@ struct Index {
          * 分段控件两边都可见、选中态墨色明确 ⇒ 零学习成本；滑动手势见视图区
          * （月历左滑进时光、时光右滑回月历）；偏好落 ViewPrefs 冷启动恢复。
          *
-         * 视觉：纸卡底槽 + 选中段墨填充（与「写今天」同色的实心=可点），
-         * 高度 30 比文字按钮略高但权重仍然让位给「写今天」。
+         * 视觉：选中段墨填充（与「写今天」同色的实心=可点），两个按钮各自圆角。
+         * ⚠️ **内嵌 Row 不加底槽**（无 backgroundColor/padding/radius）：
+         *    2026-10-14 实测，带底槽的内嵌 Row 会让**兄弟节点「写今天」的背景失效**
+         *    （墨底被冲白、纸白字看不见 —— 党哥报的"两个三个点"就是它）。
+         *    ArkUI 渲染怪癖：同一 Row 内带背景容器疑似干扰兄弟 Button 的背景合成。
+         *    规避 = 分段自身无底槽，选中态由按钮自己的墨填充表达。
          */
         Row() {
+          // ⚠️ 2026-10-15 实测三层坑（党哥报"两个三个点、没文字说明"就是它）：
+          //   ① Button 默认 padding 会挤文字；② 直接给 Button `.height(30)` 与 layoutWeight
+          //    冲突会把文字**垂直压扁**（两字只剩 35px，settings 正常 962px）；
+          //   ③ 正确解法 = 分段 Row 定高 30vp，按钮 `height('100%')` 撑满、`padding(0)`，
+          //    文字垂直居中完整渲染。
           Button('月历', { type: ButtonType.Normal, stateEffect: true })
             .fontSize(RJ_FS_META)
             .fontWeight(this.mode === 'month' ? FontWeight.Bold : FontWeight.Normal)
             .fontColor(this.mode === 'month' ? $r('app.color.rj_bg') : $r('app.color.rj_text3'))
             .backgroundColor(this.mode === 'month' ? $r('app.color.rj_accent') : Color.Transparent)
             .layoutWeight(1)
-            .height(30)
+            .height('100%')
+            .padding(0)
             .borderRadius(RJ_RADIUS_SM)
             .onClick(() => {
               this.setMode('month');
@@ -376,19 +425,19 @@ struct Index {
             .fontColor(this.mode === 'timeline' ? $r('app.color.rj_bg') : $r('app.color.rj_text3'))
             .backgroundColor(this.mode === 'timeline' ? $r('app.color.rj_accent') : Color.Transparent)
             .layoutWeight(1)
-            .height(30)
+            .height('100%')
+            .padding(0)
             .borderRadius(RJ_RADIUS_SM)
             .onClick(() => {
               this.setMode('timeline');
             })
         }
+        .height(30)
         // 96vp ≈ 288px：顶部一行要塞 标题+写今天+分段+设置（党哥屏 1256px @3x）——
         // 实测 148vp 把「设置」挤出屏幕、120vp 把 Blank 压成 0（写今天紧贴标题）。
         // 分段是指示器不是主行动，让位到"不挤且仍有呼吸"的最大宽度。
+        // ⚠️ 不加底槽的原因见上方注释（兄弟按钮背景失效的渲染怪癖）。
         .width(96)
-        .padding(2)
-        .backgroundColor($r('app.color.rj_card'))
-        .borderRadius(RJ_RADIUS_MD)
         .margin({ right: RJ_SP_MD })
         // 设置（导出备份的生命线入口 —— 藏深了等于没有）
         Button('设置', { type: ButtonType.Normal, stateEffect: true })
@@ -641,27 +690,29 @@ struct Index {
                * 点位占**固定高度**：没日记的日子用透明圆占位，
                * 这样有/没日记的数字保持在同一条水平线上，不会上下跳。
                */
+              /**
+               * 格子 = 当天写作量的**热度色阶**（茶褐 4 档，2026-10-15 借鉴 Booka/GitHub
+               * 贡献图：颜色深浅 = 当天量）。原来的 5px 圆点去掉 —— 色阶底已表达
+               * "写过 + 写多少"，圆点是冗余。
+               * 今天不抢色阶的戏：**墨色细描边**标识（"待钤印/正在钤印的一天"），
+               * 底色仍参与色阶（今天写了也有热度）。日历格管"印记"，
+               * 「写今天」蓝钮管"行动"，两个语义不混。
+               */
               Column() {
                 Text(cell.day.toString())
                   .fontSize(RJ_FS_CALLOUT)
                   .fontFamily('monospace')
-                  .fontColor(cell.isToday ? $r('app.color.rj_bg')
-                    : (cell.inMonth ? $r('app.color.rj_text') : $r('app.color.rj_text3')))
+                  .fontColor(this.heatText(cell))
                   .textAlign(TextAlign.Center)
                   .width('100%')
-                  // 今天 = 一片茶褐圆角底（"待钤印"的那一格）。
-                  // 为什么用品牌茶褐不用操作蓝：日历格不是按钮；且蓝专属「写今天」大按钮，
-                  // 绿是印记色 —— "今天是即将被钤印的一天"，语义自洽。
-                  // 有日记的今天 = 绿片 + 下方绿点，未写的今天 = 绿片（等你）。
-                  .backgroundColor(cell.isToday ? $r('app.color.rj_brand') : Color.Transparent)
-                  .borderRadius(cell.isToday ? RJ_RADIUS_SM : 0)
-                Circle({ width: 5, height: 5 })
-                  // 「这一天钤过印」= **内容印记**，取品牌茶褐（rj_brand），不是操作蓝。
-                  // 纪律：rj_accent 只给"可以点"的东西（写今天/链接/保存），不可点的一个蓝不许有
-                  // —— 2026-10-13 党哥拍板走「纸与印」方向（借鉴 Day One 的"台灯下笔记本"原则，
-                  // 不用它的琥珀金答案；茶褐是旧笔记本/牛皮纸的色，与警示红/emoji 心情分得开，全 app 唯一彩色）。
-                  .fill(cell.hasNote ? $r('app.color.rj_brand') : Color.Transparent)
-                  .margin({ top: RJ_SP_SM })
+                  .backgroundColor(this.heatFill(cell))
+                  // ⚠️ border **所有格子都给**（今天墨色、其余透明）：只给今天加描边会让
+                  //    它的文字框比别的格高出一截（1.5vp×2），月历行高不齐会跳（实测抓到）。
+                  .border({
+                    width: 1.5,
+                    color: cell.isToday ? $r('app.color.rj_accent') : Color.Transparent,
+                    radius: RJ_RADIUS_SM
+                  })
               }
               .justifyContent(FlexAlign.Center)
               .width('100%')

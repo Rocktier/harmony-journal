@@ -156,9 +156,9 @@ struct Unlock {
       }
 
       if (!this.firstRun && this.bioAvailable) {
-        // 生物解锁 = **主行动**（首选路径）：官方 EMPHASIZED + 墨色实心（纸·墨·茶：chrome 全中性）
+        // 生物解锁 = **主行动**（首选路径）：墨色实心自绘（纸·墨·茶：chrome 全中性）
+        // ⚠️ 不用 buttonStyle(EMPHASIZED)：系统强调样式会覆盖 backgroundColor（墨底被冲白）
         Button('使用指纹 / 面容解锁', { type: ButtonType.Normal, stateEffect: true })
-          .buttonStyle(ButtonStyleMode.EMPHASIZED)
           .fontSize(RJ_FS_HEADING)
           .backgroundColor($r('app.color.rj_accent'))
           .fontColor($r('app.color.rj_bg'))
@@ -171,11 +171,13 @@ struct Unlock {
       }
 
       // 主密码按钮的主次**看场景**（见 pwdPrimary）：
-      //   有生物可选 → 次要（TEXTUAL 文字态：无底、仅文字，不跟蓝按钮抢视线）
-      //   唯一路径   → 主行动（EMPHASIZED 实心蓝）
-      // ⚠️ 原来无脑用 `rj_text` 做底：深色下是白底黑字，比蓝色生物按钮还抢眼，主次打架。
+      //   有生物可选 → 次要（TEXTUAL 文字态：无底、仅文字，不跟主行动抢视线）
+      //   唯一路径   → 主行动（墨色实心自绘）
+      // ⚠️ 原来无脑用 `rj_text` 做底：深色下是白底黑字，比主行动按钮还抢眼，主次打架。
+      // ⚠️ 主行动分支**不用 EMPHASIZED**：系统强调样式会覆盖 backgroundColor（墨底被冲白、字看不见，
+      //   2026-10-14 实测），用 NORMAL + 自绘实心替代。
       Button(this.firstRun ? '设置并进入' : '用主密码解锁', { type: ButtonType.Normal, stateEffect: true })
-        .buttonStyle(this.pwdPrimary() ? ButtonStyleMode.EMPHASIZED : ButtonStyleMode.TEXTUAL)
+        .buttonStyle(this.pwdPrimary() ? ButtonStyleMode.NORMAL : ButtonStyleMode.TEXTUAL)
         .fontSize(RJ_FS_HEADING)
         .fontWeight(this.pwdPrimary() ? FontWeight.Medium : FontWeight.Normal)
         .backgroundColor(this.pwdPrimary() ? $r('app.color.rj_accent') : Color.Transparent)

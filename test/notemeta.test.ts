@@ -73,11 +73,23 @@ test('月视图：今天被认出来（isToday），且全月只有一格', () =
   const today: MonthCell[] = cells.filter((c: MonthCell) => c.isToday);
   assert.equal(today.length, 1);
   assert.equal(today[0].date, '2026-10-13');
-  // 今天同时有日记 ⇒ 绿片 + 绿点并存（互不遮挡）
+  // 今天同时有日记 ⇒ 描边 + 色阶底并存（互不遮挡）
   assert.equal(today[0].hasNote, true);
   // 不传 today ⇒ 没有格子是今天（历史月/测试兼容）
   const none: MonthCell[] = monthGrid('2026-10', [], '');
   assert.equal(none.filter((c: MonthCell) => c.isToday).length, 0);
+});
+
+test('月视图：字数热度色阶（wordsMap 进格子，没有的日期为 0）', () => {
+  const wordsMap: Record<string, number> = { '2026-10-13': 320, '2026-10-14': 12 };
+  const cells: MonthCell[] = monthGrid('2026-10', ['2026-10-13', '2026-10-14'], '', wordsMap);
+  const d13: MonthCell | undefined = cells.find((c: MonthCell) => c.date === '2026-10-13');
+  const d14: MonthCell | undefined = cells.find((c: MonthCell) => c.date === '2026-10-14');
+  const d15: MonthCell | undefined = cells.find((c: MonthCell) => c.date === '2026-10-15');
+  assert.equal(d13 !== undefined && d13.words, 320);
+  assert.equal(d14 !== undefined && d14.words, 12);
+  // 没传的日期 = 0（无色阶底）
+  assert.equal(d15 !== undefined && d15.words, 0);
 });
 
 test('id 生成：可用作文件名、两次不同、能避开已占用的', () => {

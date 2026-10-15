@@ -553,8 +553,9 @@ struct Editor {
          * 仍保留手动保存：自动保存有 1.5s 防抖，"离开前立刻存一下"仍需要一个明确入口。
          * ⚠️ `ButtonType.Normal` 显式写死（默认值在 API 18 变过，覆盖 16+ 必须锁定）。
          */
+        // ⚠️ 不用 buttonStyle(EMPHASIZED)：系统强调样式会覆盖 backgroundColor
+        //    （2026-10-14 实测墨底被冲白、字看不见）；自绘实心同样有按压反馈
         Button('保存', { type: ButtonType.Normal, stateEffect: true })
-          .buttonStyle(ButtonStyleMode.EMPHASIZED)
           .backgroundColor($r('app.color.rj_accent'))
           .fontColor($r('app.color.rj_bg'))
           .fontSize(RJ_FS_CAPTION)
