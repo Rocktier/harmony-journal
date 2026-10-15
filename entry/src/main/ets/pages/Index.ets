@@ -9,7 +9,7 @@ import { TimelineDataSource } from '../common/TimelineDataSource';
 import { ImageStore } from '../data/ImageStore';
 import {
   JournalStats, MOODS, MonthCell, Mood, NoteMeta, NoteText, SearchHit, TimelineRow, collectTags,
-  computeStats, filterMetas, moodById, monthGrid, monthOf, monthRowCount, needsBackupReminder,
+  computeStats, filterMetas, moodById, monthGrid, monthOf, monthRowCount,
   onThisDayDates, previewText, searchNotes, shiftMonth, timeOfDay, timelineRows, todayKey, yearsAgoLabel
 } from '../data/NoteMeta';
 import { NoteStore } from '../data/NoteStore';
@@ -82,8 +82,6 @@ struct Index {
    * 正在生效时入口会显示"标签 · #xxx"，免得"筛着却看不出来"。
    */
   @State private tagsExpanded: boolean = false;
-  /** 距上次备份超过阈值就提醒一次（不自动写文件、只提醒） */
-  @State private backupDue: boolean = false;
   private store: NoteStore = getStore();
   private images: ImageStore = new ImageStore();
   /** 时间轴的惰性数据源（换数据必须 reload 才会重画） */
@@ -136,8 +134,6 @@ struct Index {
     this.loaded = true;
     this.allTags = collectTags(this.metas);
     this.stats = computeStats(this.metas, todayKey());
-    // 备份提醒：生命线靠自觉是不成立的，到期提醒一次（阈值 30 天）
-    this.backupDue = needsBackupReminder(this.store.lastBackupAt(), Date.now(), this.metas.length > 0, 30);
     this.refreshData();
     this.buildRecall();
     hilog.info(DOMAIN, TAG, 'index loaded: %{public}d notes, recall %{public}d', this.metas.length, this.recall.length);
@@ -478,26 +474,6 @@ struct Index {
       }
       .width('100%')
       .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_MD })
-
-      // 备份提醒：生命线靠自觉是不成立的，到期提醒一次（不自动写文件、不重复骚扰）
-      // ⚠️ 用 text2 不用 accent：accent 是**主行动专属**（写今天），提醒性文字也抢蓝色
-      //    会让"最重要的那个按钮"不再最显眼（2026-10-12 模拟器实测后的收尾）
-      if (this.backupDue) {
-        Row() {
-          Text('距上次备份超过 30 天了 · 去备份')
-            .fontSize(RJ_FS_CAPTION)
-            .fontColor($r('app.color.rj_text2'))
-            .layoutWeight(1)
-          Text('去备份 ›')
-            .fontSize(RJ_FS_CAPTION)
-            .fontColor($r('app.color.rj_text2'))
-            .onClick(() => {
-              router.pushUrl({ url: 'pages/Settings' });
-            })
-        }
-        .width('100%')
-        .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_MD })
-      }
 
       // 筛选条：数据全在索引里 ⇒ 零 IO 成本；几百篇之后这是"还能不能用"的分界线
       Row() {
