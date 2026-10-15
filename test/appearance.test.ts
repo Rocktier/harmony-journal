@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  APPEARANCE_DARK, APPEARANCE_LIGHT, APPEARANCE_SYSTEM, appearanceIcon, appearanceLabel,
+  APPEARANCE_DARK, APPEARANCE_LIGHT, APPEARANCE_SYSTEM, appearanceLabel,
   isDarkMode, nextAppearance, normalizeAppearance
 } from '../entry/src/main/ets/common/Appearance';
 
@@ -28,17 +28,14 @@ test('切换顺序：跟随 → 深色 → 浅色 → 跟随（深色排在前�
   assert.equal(m, APPEARANCE_SYSTEM);
 });
 
-test('跟随系统时不知道当前深浅 → isDarkMode 返回 null（按钮只能显示"随"）', () => {
+test('跟随系统时不知道当前深浅 → isDarkMode 返回 null（图标画"半填充圆"）', () => {
   assert.equal(isDarkMode(APPEARANCE_SYSTEM), null);
   assert.equal(isDarkMode(APPEARANCE_DARK), true);
   assert.equal(isDarkMode(APPEARANCE_LIGHT), false);
 });
 
-test('显示名与图标三档齐全', () => {
+test('显示名三档齐全（图标已改自绘 Path，见 components/AppearanceIconButton）', () => {
   assert.equal(appearanceLabel(APPEARANCE_SYSTEM), '跟随系统');
   assert.equal(appearanceLabel(APPEARANCE_DARK), '深色');
   assert.equal(appearanceLabel(APPEARANCE_LIGHT), '浅色');
-  assert.equal(appearanceIcon(APPEARANCE_DARK), '夜');
-  assert.equal(appearanceIcon(APPEARANCE_LIGHT), '昼');
-  assert.equal(appearanceIcon(APPEARANCE_SYSTEM), '随');
 });

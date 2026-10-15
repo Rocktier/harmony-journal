@@ -5,6 +5,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 
 import { ImageStore } from '../data/ImageStore';
 import { ChevronButton } from '../components/ChevronButton';
+import { AppearanceIconButton } from '../components/AppearanceIconButton';
 
 import { Block, Span, UNDO_LIMIT, blocksToJson, jsonToBlocks, popSnapshot, pushSnapshot, wordCountOf } from '../data/NoteBlocks';
 import { blocksToLines, linesToBlocks } from '../data/NoteBridge';
@@ -12,7 +13,7 @@ import {
   MOODS, Mood, NoteMeta, isValidDateKey, parseTags, tagsToText, timeOfDay, todayKey
 } from '../data/NoteMeta';
 import { NoteStore } from '../data/NoteStore';
-import { APPEARANCE_SYSTEM, AppearanceMode, appearanceIcon, appearanceLabel, nextAppearance } from '../common/Appearance';
+import { APPEARANCE_SYSTEM, AppearanceMode, nextAppearance } from '../common/Appearance';
 import { applyAppearance } from '../common/AppearanceApply';
 import { AppearancePrefs } from '../data/AppearancePrefs';
 import { getStore } from '../data/NoteStoreHolder';
@@ -532,19 +533,15 @@ struct Editor {
          * 日/夜快捷切换（党哥 2026-10-12：很多人晚上在被窝里写日记，不能太亮）。
          * 放在头部而非设置里 —— 写的时候才想得起要调暗。
          * 一点就切：跟随系统 → 深色 → 浅色 → 跟随系统（深色排最前，因为夜间才是高频）。
+         * 图标 = 自绘 Path（2026-10-15：文字字形三连败，见 AppearanceIconButton 头注）。
          */
-        Button(appearanceIcon(this.appearance), { type: ButtonType.Normal, stateEffect: true })
-          .fontSize(RJ_FS_CAPTION)
-          .fontColor($r('app.color.rj_text2'))
-          .backgroundColor($r('app.color.rj_card'))
-          .borderRadius(RJ_RADIUS_SM)
-          .width(40)
-          .height(40)
-          .margin({ left: RJ_SP_MD })
-          .accessibilityText('外观：' + appearanceLabel(this.appearance))
-          .onClick(() => {
+        AppearanceIconButton({
+          mode: this.appearance,
+          onToggle: () => {
             this.toggleAppearance();
-          })
+          }
+        })
+          .margin({ left: RJ_SP_MD })
         Blank()
         /**
          * 「保存」放右上角（党哥定的层级）；自动保存状态移到**右下角**并淡化 ——
@@ -816,16 +813,16 @@ struct Editor {
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_text3'))
         Blank()
-        // 「已钤印」而不是「已保存」：保存是技术动作，钤印是仪式 ——
-        // 这一天的格子盖上了茶褐的印，这篇就算收好了。与日历印记/收藏★/解锁方章
-        // 同一套语言，用户每次写完都见一次，这就是记忆点（党哥：要让用户记得住我们）。
-        // 未保存对称写作「未钤印…」—— 意会成本低（印 = 盖章收好），且不与绿印记系统矛盾。
-        // ⚠️ words > 0 才配称"钤过印"：空白新日记（saved 初值 true）显示"已钤印"是**谎报**——
-        //    啥都没写就说盖了印，用户会困惑（2026-10-13 模拟器实测抓到）。
+        // 「已保存」而不是「已钤印」（2026-10-15 党哥问"已X印是什么意思"）——
+        // 状态指示的第一性职责是让人**瞬间**看懂"字存住了没有"；
+        // 钤印是篆刻用语，连作者本人都要停一秒，诗意该留给印记系统（日历点/★/方章），
+        // 不该架在用户最焦虑的一个问题上。时间 HH:mm 保留（"真的存上了"的确定感）。
+        // ⚠️ words > 0 才显示"已保存"：空白新日记（saved 初值 true）显示"已保存"是**谎报**——
+        //    啥都没写就说存上了，用户会困惑（2026-10-13 模拟器实测抓到）。
         // （build 里不能写局部 const —— ArkTS 只许 UI 语法，故内联三目）
         Text((this.saved && this.words > 0)
-          ? (this.savedAt.length > 0 ? '已钤印 · ' + this.savedAt : '已钤印')
-          : '未钤印…')
+          ? (this.savedAt.length > 0 ? '已保存 · ' + this.savedAt : '已保存')
+          : '未保存…')
           .fontSize(RJ_FS_META)
           .fontFamily('monospace')
           .fontColor($r('app.color.rj_text3'))

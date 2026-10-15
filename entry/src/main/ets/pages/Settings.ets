@@ -65,8 +65,11 @@ struct Settings {
       .fontSize(RJ_FS_META)
       .fontWeight(this.appearance === mode ? FontWeight.Bold : FontWeight.Normal)
       .fontColor(this.appearance === mode ? $r('app.color.rj_bg') : $r('app.color.rj_text3'))
-      // 自绘选中态用品牌茶褐（钤印感）；chrome（Switch/主按钮）用墨色，全 app 只有茶褐一个彩
-      .backgroundColor(this.appearance === mode ? $r('app.color.rj_brand') : $r('app.color.rj_card'))
+      // 选中态用墨色 chrome —— 与首页「月历/时光」分段控件同款。
+      // ⚠️ 2026-10-15 收敛：原来选中用茶褐，但 Index 的分段控件选中是墨色，
+      //    同类控件（三选一）两种颜色 = 党哥说的"颜色混乱"的根源之一。
+      //    纪律收口：**墨 = 可点/选中，茶 = 印记**，全 app 只剩这一条色彩逻辑。
+      .backgroundColor(this.appearance === mode ? $r('app.color.rj_accent') : $r('app.color.rj_card'))
       .padding({ left: RJ_SP_LG, right: RJ_SP_LG, top: RJ_SP_SM, bottom: RJ_SP_SM })
       .margin({ left: RJ_SP_SM })
       .onClick(() => {
@@ -287,8 +290,11 @@ struct Settings {
       //    那属于"承诺不一致"，比缺功能更伤信任。图片请用加密备份。
       Text('TXT / Markdown 是明文、不加密，且不含图片（只留占位）—— 图片请用上面的加密备份')
         .fontSize(RJ_FS_META)
-        // 明文风险是**警告**语义 ⇒ 警示色，不用强调色
-        .fontColor($r('app.color.rj_danger'))
+        // ⚠️ 2026-10-15 收敛：原来是警示红，但这是**常驻说明**不是错误 ——
+        //    红色纪律 = 只给"错了"（解锁失败/删除确认）；常驻红字只会变成壁纸，
+        //    还让设置页显得整页都在报警（党哥：红色用得太乱，要收敛）。
+        //    信息本身已经把风险说清了，弱化成次级文字反而更可信。
+        .fontColor($r('app.color.rj_text3'))
         .width('100%')
         .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_LG })
 

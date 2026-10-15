@@ -38,7 +38,7 @@ export function appearanceLabel(mode: AppearanceMode): string {
   return '跟随系统';
 }
 
-/** 是否"当前是深色"—— 用于按钮图标（☀ / ☾）。跟随系统时**不知道**系统当前深浅，返回 null。 */
+/** 是否"当前是深色"—— 用于图标选择（AppearanceIconButton 画月亮还是太阳）。跟随系统时**不知道**系统当前深浅，返回 null。 */
 export function isDarkMode(mode: AppearanceMode): boolean | null {
   if (mode === APPEARANCE_DARK) {
     return true;
@@ -47,17 +47,6 @@ export function isDarkMode(mode: AppearanceMode): boolean | null {
     return false;
   }
   return null;
-}
-
-/** 图标（一段文本，避免引入图标资源，符合"极致小"） */
-export function appearanceIcon(mode: AppearanceMode): string {
-  const dark: boolean | null = isDarkMode(mode);
-  if (dark === null) {
-    return '随';
-  }
-  // 2026-10-15 党哥：☾/☀ 是 Unicode 符号，模拟器/真机字体缺字形会渲染成残缺图形
-  // （截图上像半个"斗"）。改用汉字 —— 一定有字形、三态统一单字、贴合"纸上"语言。
-  return dark ? '夜' : '昼';
 }
 
 /**
