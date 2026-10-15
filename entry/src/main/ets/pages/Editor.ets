@@ -4,6 +4,7 @@ import { router } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 import { ImageStore } from '../data/ImageStore';
+import { ChevronButton } from '../components/ChevronButton';
 
 import { Block, Span, UNDO_LIMIT, blocksToJson, jsonToBlocks, popSnapshot, pushSnapshot, wordCountOf } from '../data/NoteBlocks';
 import { blocksToLines, linesToBlocks } from '../data/NoteBridge';
@@ -11,7 +12,7 @@ import {
   MOODS, Mood, NoteMeta, isValidDateKey, parseTags, tagsToText, timeOfDay, todayKey
 } from '../data/NoteMeta';
 import { NoteStore } from '../data/NoteStore';
-import { APPEARANCE_SYSTEM, AppearanceMode, appearanceIcon, nextAppearance } from '../common/Appearance';
+import { APPEARANCE_SYSTEM, AppearanceMode, appearanceIcon, appearanceLabel, nextAppearance } from '../common/Appearance';
 import { applyAppearance } from '../common/AppearanceApply';
 import { AppearancePrefs } from '../data/AppearancePrefs';
 import { getStore } from '../data/NoteStoreHolder';
@@ -498,18 +499,15 @@ struct Editor {
     Column() {
       // 头：日期 + 返回
       Row() {
-        // 返回：真 Button（原 Text.onClick 是伪按钮 —— 无按压反馈、读屏不报"按钮"、无法聚焦）
-        Button('<', { type: ButtonType.Normal, stateEffect: true })
-          .fontSize(RJ_FS_TITLE)
-          .fontColor($r('app.color.rj_text2'))
-          .backgroundColor(Color.Transparent)
-          .padding({ left: RJ_SP_SM, right: RJ_SP_LG })
-          .responseRegion({ x: 0, y: -8, width: '100%', height: 44 })
-          .accessibilityText('返回书架')
-          .onClick(() => {
+        // 返回：圆形 chevron 图标按钮（2026-10-15 替换裸 `<` 字符按钮）
+        ChevronButton({
+          side: 'left',
+          label: '返回',
+          onClickHandler: () => {
             this.save();
             router.back();
-          })
+          }
+        })
         Text(this.date)
           .fontSize(RJ_FS_HEADING)
           .fontFamily('monospace')
@@ -543,6 +541,7 @@ struct Editor {
           .width(40)
           .height(40)
           .margin({ left: RJ_SP_MD })
+          .accessibilityText('外观：' + appearanceLabel(this.appearance))
           .onClick(() => {
             this.toggleAppearance();
           })

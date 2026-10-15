@@ -10,6 +10,7 @@ import { APP_NAME_CN, APP_VERSION } from '../common/AppMeta';
 import { DEV_SHOW_BADGE } from '../common/DevFlags';
 import { AppearancePrefs } from '../data/AppearancePrefs';
 import { JournalStats, computeStats, dateKeyOf, todayKey } from '../data/NoteMeta';
+import { ChevronButton } from '../components/ChevronButton';
 import { getStore } from '../data/NoteStoreHolder';
 import {
   BackupItem, EXT_MD, EXT_TXT, backupFileName, buildBackup, parseBackup, readableFileName,
@@ -220,16 +221,14 @@ struct Settings {
   build() {
     Column() {
       Row() {
-        Button('<', { type: ButtonType.Normal, stateEffect: true })
-          .fontSize(RJ_FS_TITLE)
-          .fontColor($r('app.color.rj_text2'))
-          .backgroundColor(Color.Transparent)
-          .padding({ left: RJ_SP_SM, right: RJ_SP_LG })
-          .responseRegion({ x: 0, y: -8, width: '100%', height: 44 })
-          .accessibilityText('返回')
-          .onClick(() => {
+        // 返回：圆形 chevron 图标按钮（2026-10-15 替换裸 `<` 字符按钮）
+        ChevronButton({
+          side: 'left',
+          label: '返回',
+          onClickHandler: () => {
             router.back();
-          })
+          }
+        })
         Text('设置')
           .fontSize(RJ_FS_HEADING)
           .fontColor($r('app.color.rj_text'))

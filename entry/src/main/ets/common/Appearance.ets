@@ -53,9 +53,11 @@ export function isDarkMode(mode: AppearanceMode): boolean | null {
 export function appearanceIcon(mode: AppearanceMode): string {
   const dark: boolean | null = isDarkMode(mode);
   if (dark === null) {
-    return '半';
+    return '随';
   }
-  return dark ? '☾' : '☀';
+  // 2026-10-15 党哥：☾/☀ 是 Unicode 符号，模拟器/真机字体缺字形会渲染成残缺图形
+  // （截图上像半个"斗"）。改用汉字 —— 一定有字形、三态统一单字、贴合"纸上"语言。
+  return dark ? '夜' : '昼';
 }
 
 /**

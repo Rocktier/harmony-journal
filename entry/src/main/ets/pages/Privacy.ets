@@ -1,5 +1,6 @@
 import { router } from '@kit.ArkUI';
 import { RJ_LH_PARA, RJ_FS_CALLOUT, RJ_FS_HEADING, RJ_FS_TITLE, RJ_SP_LG, RJ_SP_MD, RJ_SP_SM, RJ_SP_VOID, RJ_SP_XL, RJ_SP_XXL } from '../theme/RjTokens';
+import { ChevronButton } from '../components/ChevronButton';
 
 /**
  * 隐私政策（应用内可看 —— 照 RockReader 的做法）
@@ -70,13 +71,14 @@ struct Privacy {
   build() {
     Column() {
       Row() {
-        Text('<')
-          .fontSize(RJ_FS_TITLE)
-          .fontColor($r('app.color.rj_text2'))
-          .onClick(() => {
+        // 返回：圆形 chevron 图标按钮（2026-10-15 替换裸 `<` 字符按钮）
+        ChevronButton({
+          side: 'left',
+          label: '返回',
+          onClickHandler: () => {
             router.back();
-          })
-          .padding({ right: RJ_SP_LG })
+          }
+        })
         Text('隐私政策')
           .fontSize(RJ_FS_HEADING)
           .fontColor($r('app.color.rj_text'))

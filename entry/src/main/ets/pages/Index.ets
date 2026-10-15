@@ -4,6 +4,7 @@ import { router } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 import { DEV_SHOW_BADGE } from '../common/DevFlags';
+import { ChevronButton } from '../components/ChevronButton';
 import { TimelineDataSource } from '../common/TimelineDataSource';
 import { ImageStore } from '../data/ImageStore';
 import {
@@ -653,33 +654,26 @@ struct Index {
       } else if (this.mode === 'month') {
         // 月视图
         Row() {
-          // 月份切换：真 Button（原来是 Text.onClick 伪按钮 —— 无按压反馈、读屏不报"按钮"、
-          // 无法聚焦；这是 A 类无障碍问题）。44vp 热区用 responseRegion 补，不撑高行
-          Button('<', { type: ButtonType.Normal, stateEffect: true })
-            .fontSize(RJ_FS_BODY)
-            .fontColor($r('app.color.rj_text2'))
-            .backgroundColor(Color.Transparent)
-            .padding({ left: RJ_SP_LG, right: RJ_SP_MD })
-            .responseRegion({ x: 0, y: -8, width: '100%', height: 44 })
-            .accessibilityText('上一个月')
-            .onClick(() => {
+          // 月份切换：圆形 chevron 图标按钮（2026-10-15 替换裸 `<` `>` 字符按钮）
+          ChevronButton({
+            side: 'left',
+            label: '上一个月',
+            onClickHandler: () => {
               this.monthKey = shiftMonth(this.monthKey, -1);
-            })
+            }
+          })
           Text(this.monthKey)
             .fontSize(RJ_FS_CALLOUT)
             .fontFamily('monospace')
             .fontColor($r('app.color.rj_text'))
             .letterSpacing(2)
-          Button('>', { type: ButtonType.Normal, stateEffect: true })
-            .fontSize(RJ_FS_BODY)
-            .fontColor($r('app.color.rj_text2'))
-            .backgroundColor(Color.Transparent)
-            .padding({ left: RJ_SP_MD, right: RJ_SP_LG })
-            .responseRegion({ x: 0, y: -8, width: '100%', height: 44 })
-            .accessibilityText('下一个月')
-            .onClick(() => {
+          ChevronButton({
+            side: 'right',
+            label: '下一个月',
+            onClickHandler: () => {
               this.monthKey = shiftMonth(this.monthKey, 1);
-            })
+            }
+          })
         }
         .margin({ bottom: RJ_SP_MD })
 
@@ -732,80 +726,6 @@ struct Index {
         .height(this.calRows() * 50)
         .padding({ left: RJ_SP_XL, right: RJ_SP_XL })
 
-        // 本月日记列表（**只列这个月** —— 顶部月份导航与列表范围必须一致，见 monthRows）
-        if (this.monthRows().length === 0) {
-          Text('这个月还没有日记')
-            .fontSize(RJ_FS_CAPTION)
-            .fontColor($r('app.color.rj_text3'))
-            .margin({ top: RJ_SP_XXXL })
-        }
-        List() {
-          ForEach(this.monthRows(), (row: TimelineRow) => {
-            ListItem() {
-              Column() {
-                Row() {
-                  Text(row.meta !== null ? row.meta.date : '')
-                    .fontSize(RJ_FS_CAPTION)
-                    .fontFamily('monospace')
-                    .fontColor($r('app.color.rj_text2'))
-                  if (row.showTime && row.meta !== null) {
-                    Text(timeOfDay(row.meta.createdAt))
-                      .fontSize(RJ_FS_META)
-                      .fontFamily('monospace')
-                      .fontColor($r('app.color.rj_text3'))
-                      .margin({ left: RJ_SP_MD })
-                  }
-                  if (row.meta !== null && this.moodEmoji(row.meta).length > 0) {
-                    Text(this.moodEmoji(row.meta))
-                      .fontSize(RJ_FS_CALLOUT)
-                      .margin({ left: RJ_SP_LG })
-                  }
-                  if (row.meta !== null && row.meta.favorite) {
-                    Text('★')
-                      .fontSize(RJ_FS_CALLOUT)
-                      // 收藏 = 钤印 ⇒ 品牌茶褐（同 Editor 收藏星、同日历日期点，三处一个色）
-                      .fontColor($r('app.color.rj_brand'))
-                      .margin({ left: RJ_SP_LG })
-                  }
-                  Blank()
-                  Text(row.meta !== null ? row.meta.words + ' 字' : '')
-                    .fontSize(RJ_FS_META)
-                    .fontFamily('monospace')
-                    .fontColor($r('app.color.rj_text3'))
-                }
-                .width('100%')
-                // 标签：用户给的主题词，找得回来的第二条路
-                if (row.meta !== null && row.meta.tags.length > 0) {
-                  Text('#' + row.meta.tags.join(' #'))
-                    .fontSize(RJ_FS_META)
-                    .fontFamily('monospace')
-                    .fontColor($r('app.color.rj_text3'))
-                    .margin({ top: RJ_SP_SM })
-                }
-                // 摘要来自索引缓存 ⇒ 零额外 IO，月视图也能"看到自己写过的话"
-                if (row.meta !== null && row.meta.preview.length > 0) {
-                  // serif = 纸上阅读的笔画语言（党哥 2026-10-15：读的界面要纸质书信质感）
-                  Text(row.meta.preview)
-                    .fontSize(RJ_FS_CALLOUT)
-                    .fontFamily('serif')
-                    .fontColor($r('app.color.rj_text'))
-                    .margin({ top: RJ_SP_SM })
-                    .maxLines(2)
-                    .textOverflow({ overflow: TextOverflow.Ellipsis })
-                }
-              }
-              .alignItems(HorizontalAlign.Start)
-              .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
-            }
-            .onClick(() => {
-              if (row.meta !== null) {
-                this.open(row.meta.date, row.meta.id);
-              }
-            })
-          }, (row: TimelineRow) => row.key)
-        }
-        .layoutWeight(1)
-        .divider({ strokeWidth: 1, color: $r('app.color.rj_line') })
       } else {
         // 时光时间轴（全部，按年月分块，倒序）
         if (!this.loaded || this.metas.length === 0) {

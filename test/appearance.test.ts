@@ -28,7 +28,7 @@ test('切换顺序：跟随 → 深色 → 浅色 → 跟随（深色排在前�
   assert.equal(m, APPEARANCE_SYSTEM);
 });
 
-test('跟随系统时不知道当前深浅 → isDarkMode 返回 null（按钮只能显示"半"）', () => {
+test('跟随系统时不知道当前深浅 → isDarkMode 返回 null（按钮只能显示"随"）', () => {
   assert.equal(isDarkMode(APPEARANCE_SYSTEM), null);
   assert.equal(isDarkMode(APPEARANCE_DARK), true);
   assert.equal(isDarkMode(APPEARANCE_LIGHT), false);
@@ -38,7 +38,7 @@ test('显示名与图标三档齐全', () => {
   assert.equal(appearanceLabel(APPEARANCE_SYSTEM), '跟随系统');
   assert.equal(appearanceLabel(APPEARANCE_DARK), '深色');
   assert.equal(appearanceLabel(APPEARANCE_LIGHT), '浅色');
-  assert.equal(appearanceIcon(APPEARANCE_DARK), '☾');
-  assert.equal(appearanceIcon(APPEARANCE_LIGHT), '☀');
-  assert.equal(appearanceIcon(APPEARANCE_SYSTEM), '半');
+  assert.equal(appearanceIcon(APPEARANCE_DARK), '夜');
+  assert.equal(appearanceIcon(APPEARANCE_LIGHT), '昼');
+  assert.equal(appearanceIcon(APPEARANCE_SYSTEM), '随');
 });
