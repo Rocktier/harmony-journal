@@ -24,8 +24,13 @@ const ICON_SIZE: number = 22;
 
 @Component
 export struct AppearanceIconButton {
-  /** 当前外观模式（决定画哪个图标） */
-  mode: AppearanceMode = 'system';
+  /**
+   * 当前外观模式（决定画哪个图标）。
+   * ⚠️ 必须 @Prop：setColorMode 只改全局色板，图标要靠父级 @State appearance
+   *    驱动重绘；普通成员不观察父状态，会出现"界面已浅色、图标还停留在月亮"
+   *    （2026-10-16 装机实测抓到的不同步 bug）。
+   */
+  @Prop mode: AppearanceMode = 'system';
   /** 点击回调（三态轮转由调用方负责） */
   onToggle: () => void = () => {};
 
