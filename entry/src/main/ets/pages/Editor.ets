@@ -14,12 +14,13 @@ import {
 } from '../data/NoteMeta';
 import { NoteStore } from '../data/NoteStore';
 import { APPEARANCE_SYSTEM, AppearanceMode, nextAppearance } from '../common/Appearance';
-import { applyAppearance } from '../common/AppearanceApply';
+import { applyPaletteMode } from '../common/AppearanceApply';
 import { AppearancePrefs } from '../data/AppearancePrefs';
 import { getStore } from '../data/NoteStoreHolder';
 import { RawSpan } from '../data/NoteBlocks';
 import { mergeSpans } from '../data/NoteBlocks';
 import { RJ_FS_BODY, RJ_FS_CALLOUT, RJ_FS_CAPTION, RJ_FS_HEADING, RJ_FS_META, RJ_FS_TITLE, RJ_RADIUS_LG, RJ_RADIUS_SM, RJ_SP_LG, RJ_SP_MD, RJ_SP_SM, RJ_SP_XL, RJ_SP_XS, RJ_SP_XXL } from '../theme/RjTokens';
+import { ThemePalette } from '../theme/ThemePalette';
 
 /**
  * 编辑页（Phase 4）：所见即所得
@@ -43,6 +44,8 @@ const TAG: string = 'RockJournal';
 @Entry
 @Component
 struct Editor {
+  /** 运行时色板（深浅切换 = AppStorage 换对象，页面栈不动；见 ThemePalette 头注） */
+  @StorageLink('palette') palette: ThemePalette = new ThemePalette(false);
   /** 这一篇的主键（新建时先占位，首次保存才真正落盘） */
   @State private entryId: string = '';
   @State private date: string = '';
@@ -110,7 +113,7 @@ struct Editor {
     const next: AppearanceMode = nextAppearance(this.appearance);
     this.appearance = next;
     this.prefs.set(next);
-    applyAppearance(getContext(this) as common.UIAbilityContext, next);
+    applyPaletteMode(getContext(this) as common.UIAbilityContext, next);
   }
 
   aboutToAppear(): void {
@@ -250,9 +253,9 @@ struct Editor {
     }
     for (let i: number = 0; i < this.lines.length; i++) {
       if (i > 0) {
-        this.controller.addTextSpan('\n', { style: { fontSize: RJ_FS_BODY, fontColor: $r('app.color.rj_text') } });
+        this.controller.addTextSpan('\n', { style: { fontSize: RJ_FS_BODY, fontColor: this.palette.text } });
       }
-      this.controller.addTextSpan(this.lines[i], { style: { fontSize: RJ_FS_BODY, fontColor: $r('app.color.rj_text') } });
+      this.controller.addTextSpan(this.lines[i], { style: { fontSize: RJ_FS_BODY, fontColor: this.palette.text } });
     }
     hilog.info(DOMAIN, TAG, 'restored %{public}d lines', this.lines.length);
   }
@@ -460,7 +463,7 @@ struct Editor {
     // ⚠️ fontSize 取 token RJ_FS_BODY：此前这里硬编码 16，与注释/规范的 17 不一致。
     this.controller.setTypingStyle({
       fontSize: RJ_FS_BODY,
-      fontColor: $r('app.color.rj_text'),
+      fontColor: this.palette.text,
       fontWeight: bold ? FontWeight.Bold : FontWeight.Normal,
       fontStyle: italic ? FontStyle.Italic : FontStyle.Normal
     });
@@ -512,14 +515,14 @@ struct Editor {
         Text(this.date)
           .fontSize(RJ_FS_HEADING)
           .fontFamily('monospace')
-          .fontColor($r('app.color.rj_text'))
+          .fontColor(this.palette.text)
           .letterSpacing(2)
         // 收藏：重要的几篇★住，以后一眼能挑出来
         Button(this.favorite ? '★' : '☆', { type: ButtonType.Normal, stateEffect: true })
           .fontSize(RJ_FS_BODY)
           // 收藏 = 钤印 ⇒ 品牌茶褐（与日历日期点、列表 ★ 三处同色；
           // 保存按钮的蓝是"操作"，这个绿是"印记"，分工不混）
-          .fontColor(this.favorite ? $r('app.color.rj_brand') : $r('app.color.rj_text3'))
+          .fontColor(this.favorite ? this.palette.brand : this.palette.text3)
           .backgroundColor(Color.Transparent)
           .margin({ left: RJ_SP_SM })
           .padding(RJ_SP_SM)
@@ -552,8 +555,8 @@ struct Editor {
         // ⚠️ 不用 buttonStyle(EMPHASIZED)：系统强调样式会覆盖 backgroundColor
         //    （2026-10-14 实测墨底被冲白、字看不见）；自绘实心同样有按压反馈
         Button('保存', { type: ButtonType.Normal, stateEffect: true })
-          .backgroundColor($r('app.color.rj_accent'))
-          .fontColor($r('app.color.rj_bg'))
+          .backgroundColor(this.palette.accent)
+          .fontColor(this.palette.bg)
           .fontSize(RJ_FS_CAPTION)
           .fontWeight(FontWeight.Bold)
           .borderRadius(RJ_RADIUS_LG)
@@ -579,13 +582,13 @@ struct Editor {
             Text('本日 ' + this.dayEntries.length + ' 篇')
               .fontSize(RJ_FS_META)
               .fontFamily('monospace')
-              .fontColor($r('app.color.rj_text3'))
+              .fontColor(this.palette.text3)
           }
           Blank()
           if (this.dayEntries.length > 1) {
             Button('‹', { type: ButtonType.Normal, stateEffect: true })
               .fontSize(RJ_FS_BODY)
-              .fontColor(this.dayIndex > 0 ? $r('app.color.rj_text2') : $r('app.color.rj_line'))
+              .fontColor(this.dayIndex > 0 ? this.palette.text2 : this.palette.line)
               .backgroundColor(Color.Transparent)
               .padding({ left: RJ_SP_LG, right: RJ_SP_MD })
               .responseRegion({ x: 0, y: -8, width: '100%', height: 44 })
@@ -596,11 +599,11 @@ struct Editor {
             Text((this.dayIndex < 0 ? this.dayEntries.length : this.dayIndex + 1) + '/' + this.dayEntries.length)
               .fontSize(RJ_FS_CAPTION)
               .fontFamily('monospace')
-              .fontColor($r('app.color.rj_text2'))
+              .fontColor(this.palette.text2)
             Button('›', { type: ButtonType.Normal, stateEffect: true })
               .fontSize(RJ_FS_BODY)
               .fontColor(this.dayIndex >= 0 && this.dayIndex < this.dayEntries.length - 1
-                ? $r('app.color.rj_text2') : $r('app.color.rj_line'))
+                ? this.palette.text2 : this.palette.line)
               .backgroundColor(Color.Transparent)
               .padding({ left: RJ_SP_MD, right: RJ_SP_LG })
               .responseRegion({ x: 0, y: -8, width: '100%', height: 44 })
@@ -611,7 +614,7 @@ struct Editor {
           }
           Button('＋', { type: ButtonType.Normal, stateEffect: true })
             .fontSize(RJ_FS_CALLOUT)
-            .fontColor($r('app.color.rj_text'))
+            .fontColor(this.palette.text)
             .fontWeight(FontWeight.Bold)
             .backgroundColor(Color.Transparent)
             .padding({ left: RJ_SP_LG })
@@ -642,7 +645,7 @@ struct Editor {
           .value(this.moodDisplay())
           // ⚠️ Select 没有 fontSize 属性（编译实测报 10505001），字号走 Font 的 size
           .font({ size: RJ_FS_CAPTION })
-          .fontColor($r('app.color.rj_text'))
+          .fontColor(this.palette.text)
           .onSelect((index: number) => {
             this.mood = index === 0 ? '' : MOODS[index - 1].id;
             if (this.mood.length === 0) {
@@ -652,9 +655,9 @@ struct Editor {
           })
         TextInput({ placeholder: '标签', text: this.tagsText })
           .fontSize(RJ_FS_CAPTION)
-          .backgroundColor($r('app.color.rj_card'))
-          .fontColor($r('app.color.rj_text'))
-          .placeholderColor($r('app.color.rj_text3'))
+          .backgroundColor(this.palette.card)
+          .fontColor(this.palette.text)
+          .placeholderColor(this.palette.text3)
           // 与左侧心情下拉**等高**（同一行的两个控件不一样高很别扭）；40dp 仍不足 44，
           // 热区用 responseRegion 补
           .height(40)
@@ -696,7 +699,7 @@ struct Editor {
         Button('B', { type: ButtonType.Normal, stateEffect: true })
           .fontSize(RJ_FS_CALLOUT)
           .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.rj_text'))
+          .fontColor(this.palette.text)
           .backgroundColor(Color.Transparent)
           .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_SM, bottom: RJ_SP_SM })
           .onClick(() => {
@@ -705,7 +708,7 @@ struct Editor {
         Button('I', { type: ButtonType.Normal, stateEffect: true })
           .fontSize(RJ_FS_CALLOUT)
           .fontStyle(FontStyle.Italic)
-          .fontColor($r('app.color.rj_text'))
+          .fontColor(this.palette.text)
           .backgroundColor(Color.Transparent)
           .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_SM, bottom: RJ_SP_SM })
           .onClick(() => {
@@ -713,15 +716,15 @@ struct Editor {
           })
         Button('列表', { type: ButtonType.Normal, stateEffect: true })
           .fontSize(RJ_FS_CAPTION)
-          .fontColor($r('app.color.rj_text'))
+          .fontColor(this.palette.text)
           .backgroundColor(Color.Transparent)
           .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_SM, bottom: RJ_SP_SM })
           .onClick(() => {
-            this.controller.addTextSpan('- ', { style: { fontSize: RJ_FS_BODY, fontColor: $r('app.color.rj_text') } });
+            this.controller.addTextSpan('- ', { style: { fontSize: RJ_FS_BODY, fontColor: this.palette.text } });
           })
         Button('图片', { type: ButtonType.Normal, stateEffect: true })
           .fontSize(RJ_FS_CAPTION)
-          .fontColor($r('app.color.rj_text'))
+          .fontColor(this.palette.text)
           .backgroundColor(Color.Transparent)
           .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_SM, bottom: RJ_SP_SM })
           .onClick(() => {
@@ -733,7 +736,7 @@ struct Editor {
           .backgroundColor(Color.Transparent)
           .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_SM, bottom: RJ_SP_SM })
           .fontSize(RJ_FS_CAPTION)
-          .fontColor(this.canUndo ? $r('app.color.rj_text') : $r('app.color.rj_line'))
+          .fontColor(this.canUndo ? this.palette.text : this.palette.line)
           .enabled(this.canUndo)   // 禁用态交给 Button，读屏也能正确报"已停用"
           .onClick(() => {
             this.doUndo();
@@ -742,7 +745,7 @@ struct Editor {
           .backgroundColor(Color.Transparent)
           .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_SM, bottom: RJ_SP_SM })
           .fontSize(RJ_FS_CAPTION)
-          .fontColor(this.canRedo ? $r('app.color.rj_text') : $r('app.color.rj_line'))
+          .fontColor(this.canRedo ? this.palette.text : this.palette.line)
           .enabled(this.canRedo)
           .onClick(() => {
             this.doRedo();
@@ -760,9 +763,9 @@ struct Editor {
         // 84.6% 白 —— 晚上写日记等于对着一片白，正是党哥要解决的那个场景）。
         // （RichEditorAttribute 没有 fontColor 属性 ⇒ 默认字色管不了，只能管底色；
         //   用户输入文字的色由内容 span 自带 style 决定，见 restore/addTextSpan 处）
-        .backgroundColor($r('app.color.rj_bg'))
-        .caretColor($r('app.color.rj_accent'))
-        .selectedBackgroundColor($r('app.color.rj_sel'))
+        .backgroundColor(this.palette.bg)
+        .caretColor(this.palette.accent)
+        .selectedBackgroundColor(this.palette.sel)
         /**
          * 占位文案**不再提 Markdown**（原来是「写点什么…（# 标题、- 列表）」）。
          *
@@ -774,7 +777,7 @@ struct Editor {
          * 去掉解析会让老内容"退化成普通文字"（等于静默改用户的日记）。
          * 所以是"入口上淡化"，不是"能力上取消"。
          */
-        .placeholder('写点什么…', { font: { size: RJ_FS_BODY }, fontColor: $r('app.color.rj_text3') })
+        .placeholder('写点什么…', { font: { size: RJ_FS_BODY }, fontColor: this.palette.text3 })
         .onReady(() => {
           this.setSpanStyle(false, false);
           this.restore();
@@ -811,7 +814,7 @@ struct Editor {
         Text(this.words + ' 字')
           .fontSize(RJ_FS_META)
           .fontFamily('monospace')
-          .fontColor($r('app.color.rj_text3'))
+          .fontColor(this.palette.text3)
         Blank()
         // 「已保存」而不是「已钤印」（2026-10-15 党哥问"已X印是什么意思"）——
         // 状态指示的第一性职责是让人**瞬间**看懂"字存住了没有"；
@@ -825,7 +828,7 @@ struct Editor {
           : '未保存…')
           .fontSize(RJ_FS_META)
           .fontFamily('monospace')
-          .fontColor($r('app.color.rj_text3'))
+          .fontColor(this.palette.text3)
           .opacity(this.saved ? 0.7 : 0.4)
           .animation({ duration: 220, curve: Curve.EaseOut })
       }
@@ -835,7 +838,7 @@ struct Editor {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.rj_bg'))
+    .backgroundColor(this.palette.bg)
   }
 }
 

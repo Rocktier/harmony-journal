@@ -3,6 +3,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 
 import { unlockWith, setupVault, unlockWithBiometric, hasBiometric, isFirstRun } from '../data/NoteStoreHolder';
 import { RJ_FS_CALLOUT, RJ_FS_CAPTION, RJ_FS_DISPLAY, RJ_FS_HEADING, RJ_FS_META, RJ_SP_LG, RJ_SP_MD, RJ_SP_SM, RJ_SP_TOP_INSET, RJ_SP_VOID, RJ_SP_XL } from '../theme/RjTokens';
+import { ThemePalette } from '../theme/ThemePalette';
 
 /**
  * 解锁页（Phase 8 / 决策 4）：替代开发期 DEV_UNLOCK_BYPASS。
@@ -22,6 +23,8 @@ const TAG: string = 'RockJournal';
 @Entry
 @Component
 struct Unlock {
+  /** 运行时色板（深浅切换 = AppStorage 换对象，页面栈不动；见 ThemePalette 头注） */
+  @StorageLink('palette') palette: ThemePalette = new ThemePalette(false);
   @State private password: string = '';
   @State private confirm: string = '';
   @State private error: string = '';
@@ -100,17 +103,17 @@ struct Unlock {
         Text('记')
           .fontSize(RJ_FS_HEADING)
           .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.rj_brand'))
+          .fontColor(this.palette.brand)
       }
       .width(56)
       .height(56)
-      .border({ width: 1.5, color: $r('app.color.rj_brand'), radius: 10 })
+      .border({ width: 1.5, color: this.palette.brand, radius: 10 })
       .margin({ top: RJ_SP_TOP_INSET })
 
       Text('Rock私记')
         .fontSize(RJ_FS_DISPLAY)
         .fontWeight(FontWeight.Bold)
-        .fontColor($r('app.color.rj_text'))
+        .fontColor(this.palette.text)
         .letterSpacing(2)
         .margin({ top: RJ_SP_XL, bottom: RJ_SP_SM })
 
@@ -118,21 +121,21 @@ struct Unlock {
       Text(this.todayLabel())
         .fontSize(RJ_FS_META)
         .fontFamily('monospace')
-        .fontColor($r('app.color.rj_text2'))
+        .fontColor(this.palette.text2)
 
       // 弹性空间：上（印记/今天）与中（表单）两极拉开，表单落在视觉中心
       Blank()
 
       Text(this.firstRun ? '设置主密码' : '输入主密码解锁')
         .fontSize(RJ_FS_CALLOUT)
-        .fontColor($r('app.color.rj_text2'))
+        .fontColor(this.palette.text2)
         .margin({ bottom: RJ_SP_VOID })
 
       TextInput({ placeholder: '主密码', text: this.password })
         .type(InputType.Password)
         .fontSize(RJ_FS_CALLOUT)
-        .backgroundColor($r('app.color.rj_card'))
-        .fontColor($r('app.color.rj_text'))
+        .backgroundColor(this.palette.card)
+        .fontColor(this.palette.text)
         .width('80%')
         .height(44)
         .margin({ bottom: RJ_SP_LG })
@@ -145,8 +148,8 @@ struct Unlock {
         TextInput({ placeholder: '再次输入', text: this.confirm })
           .type(InputType.Password)
           .fontSize(RJ_FS_CALLOUT)
-          .backgroundColor($r('app.color.rj_card'))
-          .fontColor($r('app.color.rj_text'))
+          .backgroundColor(this.palette.card)
+          .fontColor(this.palette.text)
           .width('80%')
           .height(44)
           .margin({ bottom: RJ_SP_LG })
@@ -160,8 +163,8 @@ struct Unlock {
         // ⚠️ 不用 buttonStyle(EMPHASIZED)：系统强调样式会覆盖 backgroundColor（墨底被冲白）
         Button('使用指纹 / 面容解锁', { type: ButtonType.Normal, stateEffect: true })
           .fontSize(RJ_FS_HEADING)
-          .backgroundColor($r('app.color.rj_accent'))
-          .fontColor($r('app.color.rj_bg'))
+          .backgroundColor(this.palette.accent)
+          .fontColor(this.palette.bg)
           .width('80%')
           .height(46)
           .margin({ top: RJ_SP_MD, bottom: RJ_SP_SM })
@@ -180,8 +183,8 @@ struct Unlock {
         .buttonStyle(this.pwdPrimary() ? ButtonStyleMode.NORMAL : ButtonStyleMode.TEXTUAL)
         .fontSize(RJ_FS_HEADING)
         .fontWeight(this.pwdPrimary() ? FontWeight.Medium : FontWeight.Normal)
-        .backgroundColor(this.pwdPrimary() ? $r('app.color.rj_accent') : Color.Transparent)
-        .fontColor(this.pwdPrimary() ? $r('app.color.rj_bg') : $r('app.color.rj_text2'))
+        .backgroundColor(this.pwdPrimary() ? this.palette.accent : Color.Transparent)
+        .fontColor(this.pwdPrimary() ? this.palette.bg : this.palette.text2)
         .width('80%')
         .height(46)
         .margin({ top: RJ_SP_MD })
@@ -193,7 +196,7 @@ struct Unlock {
         // 错误提示用警示色（rj_danger），不用强调色 —— 蓝色是"重要"，红色才是"错了"
         Text(this.error)
           .fontSize(RJ_FS_CAPTION)
-          .fontColor($r('app.color.rj_danger'))
+          .fontColor(this.palette.danger)
           .margin({ top: RJ_SP_XL })
       }
       // 弹性空间：把信任锚压到屏幕底部 —— 它原来是半空里飘的一行小字，
@@ -201,12 +204,12 @@ struct Unlock {
       Blank()
       Text('数据只在这台设备上 · AES-256-GCM 加密')
         .fontSize(RJ_FS_META)
-        .fontColor($r('app.color.rj_text3'))
+        .fontColor(this.palette.text3)
         .margin({ bottom: RJ_SP_VOID })
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.rj_bg'))
+    .backgroundColor(this.palette.bg)
     .justifyContent(FlexAlign.Start)
   }
 

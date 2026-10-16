@@ -2,7 +2,7 @@ import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 
-import { applyAppearance } from '../common/AppearanceApply';
+import { applyAppearanceAtStartup } from '../common/AppearanceApply';
 import { AppearancePrefs } from '../data/AppearancePrefs';
 import { bootstrap } from '../data/NoteStoreHolder';
 
@@ -27,7 +27,7 @@ export default class EntryAbility extends UIAbility {
     try {
       const prefs: AppearancePrefs = new AppearancePrefs();
       prefs.open(this.context);
-      applyAppearance(this.context, prefs.get());
+      applyAppearanceAtStartup(this.context, prefs.get());
     } catch (e) {
       hilog.warn(DOMAIN, TAG, 'apply appearance failed: %{public}s', JSON.stringify(e));
     }

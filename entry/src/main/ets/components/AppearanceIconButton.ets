@@ -18,12 +18,15 @@
 import { display } from '@kit.ArkUI';
 import { AppearanceMode, appearanceLabel, isDarkMode } from '../common/Appearance';
 import { RJ_RADIUS_SM } from '../theme/RjTokens';
+import { ThemePalette } from '../theme/ThemePalette';
 
 /** 图标视口（vp）—— 与坐标空间同尺寸，commands 乘密度后正好填满 */
 const ICON_SIZE: number = 22;
 
 @Component
 export struct AppearanceIconButton {
+  /** 运行时色板（深浅切换 = AppStorage 换对象，页面栈不动；见 ThemePalette 头注） */
+  @StorageLink('palette') palette: ThemePalette = new ThemePalette(false);
   /**
    * 当前外观模式（决定画哪个图标）。
    * ⚠️ 必须 @Prop：setColorMode 只改全局色板，图标要靠父级 @State appearance
@@ -83,14 +86,14 @@ export struct AppearanceIconButton {
             .width(ICON_SIZE)
             .height(ICON_SIZE)
             .commands(this.moonCmd())
-            .fill($r('app.color.rj_text2'))
+            .fill(this.palette.text2)
         } else if (isDarkMode(this.mode) === false) {
           Path()
             .width(ICON_SIZE)
             .height(ICON_SIZE)
             .commands(this.sunCmd())
             .fill('none')
-            .stroke($r('app.color.rj_text2'))
+            .stroke(this.palette.text2)
             .strokeWidth(1.8)
             .strokeLineCap(LineCapStyle.Round)
         } else {
@@ -99,19 +102,19 @@ export struct AppearanceIconButton {
               .width(ICON_SIZE)
               .height(ICON_SIZE)
               .commands(this.autoFillCmd())
-              .fill($r('app.color.rj_text2'))
+              .fill(this.palette.text2)
             Path()
               .width(ICON_SIZE)
               .height(ICON_SIZE)
               .commands(this.autoRingCmd())
               .fill('none')
-              .stroke($r('app.color.rj_text2'))
+              .stroke(this.palette.text2)
               .strokeWidth(1.8)
           }
         }
       }
     }
-    .backgroundColor($r('app.color.rj_card'))
+    .backgroundColor(this.palette.card)
     .borderRadius(RJ_RADIUS_SM)
     .width(40)
     .height(40)

@@ -1,6 +1,7 @@
 import { router } from '@kit.ArkUI';
 import { RJ_LH_PARA, RJ_FS_CALLOUT, RJ_FS_HEADING, RJ_FS_TITLE, RJ_SP_LG, RJ_SP_MD, RJ_SP_SM, RJ_SP_VOID, RJ_SP_XL, RJ_SP_XXL } from '../theme/RjTokens';
 import { ChevronButton } from '../components/ChevronButton';
+import { ThemePalette } from '../theme/ThemePalette';
 
 /**
  * 隐私政策（应用内可看 —— 照 RockReader 的做法）
@@ -68,6 +69,8 @@ function splitInline(line: string): InlinePart[] {
 @Entry
 @Component
 struct Privacy {
+  /** 运行时色板（深浅切换 = AppStorage 换对象，页面栈不动；见 ThemePalette 头注） */
+  @StorageLink('palette') palette: ThemePalette = new ThemePalette(false);
   build() {
     Column() {
       Row() {
@@ -81,7 +84,7 @@ struct Privacy {
         })
         Text('隐私政策')
           .fontSize(RJ_FS_HEADING)
-          .fontColor($r('app.color.rj_text'))
+          .fontColor(this.palette.text)
           .letterSpacing(2)
       }
       .width('100%')
@@ -94,7 +97,7 @@ struct Privacy {
               Text(line.substring(1))
                 .fontSize(RJ_FS_HEADING)
                 .fontWeight(FontWeight.Bold)
-                .fontColor($r('app.color.rj_text'))
+                .fontColor(this.palette.text)
                 .margin({ top: RJ_SP_XXL, bottom: RJ_SP_MD })
                 .width('100%')
             } else {
@@ -102,7 +105,7 @@ struct Privacy {
                 ForEach(splitInline(line), (part: InlinePart) => {
                   Span(part.text)
                     .fontWeight(part.bold ? FontWeight.Bold : FontWeight.Normal)
-                    .fontColor(part.bold ? $r('app.color.rj_text') : $r('app.color.rj_text2'))
+                    .fontColor(part.bold ? this.palette.text : this.palette.text2)
                 }, (part: InlinePart) => part.text)
               }
                 .fontSize(RJ_FS_CALLOUT)
@@ -119,6 +122,6 @@ struct Privacy {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.rj_bg'))
+    .backgroundColor(this.palette.bg)
   }
 }

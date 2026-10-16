@@ -5,7 +5,7 @@ import { router } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 import { APPEARANCE_DARK, APPEARANCE_LIGHT, APPEARANCE_SYSTEM, AppearanceMode } from '../common/Appearance';
-import { applyAppearance } from '../common/AppearanceApply';
+import { applyPaletteMode } from '../common/AppearanceApply';
 import { APP_NAME_CN, APP_VERSION } from '../common/AppMeta';
 import { DEV_SHOW_BADGE } from '../common/DevFlags';
 import { AppearancePrefs } from '../data/AppearancePrefs';
@@ -17,6 +17,7 @@ import {
   toMarkdown, toPlainText, utf8Encode
 } from '../data/BackupService';
 import { RJ_FS_CALLOUT, RJ_FS_CAPTION, RJ_FS_HEADING, RJ_FS_META, RJ_FS_TITLE, RJ_SP_LG, RJ_SP_MD, RJ_SP_SM, RJ_SP_XL, RJ_SP_XXL, RJ_SP_XXXL } from '../theme/RjTokens';
+import { ThemePalette } from '../theme/ThemePalette';
 
 /**
  * 设置页（Phase 7 备份 + 关于）
@@ -30,6 +31,8 @@ const TAG: string = 'RockJournal';
 @Entry
 @Component
 struct Settings {
+  /** 运行时色板（深浅切换 = AppStorage 换对象，页面栈不动；见 ThemePalette 头注） */
+  @StorageLink('palette') palette: ThemePalette = new ThemePalette(false);
   @State private noteCount: number = 0;
   @State private lastBackup: string = '从未';
   @State private toast: string = '';
@@ -55,7 +58,7 @@ struct Settings {
   private setAppearance(mode: AppearanceMode): void {
     this.appearance = mode;
     this.prefs.set(mode);
-    applyAppearance(getContext(this) as common.Context, mode);
+    applyPaletteMode(getContext(this) as common.Context, mode);
   }
 
   /** 三态 chip：选中才亮（真 Button —— 按压反馈、读屏报"按钮"、可聚焦） */
@@ -64,12 +67,12 @@ struct Settings {
     Button(label, { type: ButtonType.Normal, stateEffect: true })
       .fontSize(RJ_FS_META)
       .fontWeight(this.appearance === mode ? FontWeight.Bold : FontWeight.Normal)
-      .fontColor(this.appearance === mode ? $r('app.color.rj_bg') : $r('app.color.rj_text3'))
+      .fontColor(this.appearance === mode ? this.palette.bg : this.palette.text3)
       // 选中态用墨色 chrome —— 与首页「月历/时光」分段控件同款。
       // ⚠️ 2026-10-15 收敛：原来选中用茶褐，但 Index 的分段控件选中是墨色，
       //    同类控件（三选一）两种颜色 = 党哥说的"颜色混乱"的根源之一。
       //    纪律收口：**墨 = 可点/选中，茶 = 印记**，全 app 只剩这一条色彩逻辑。
-      .backgroundColor(this.appearance === mode ? $r('app.color.rj_accent') : $r('app.color.rj_card'))
+      .backgroundColor(this.appearance === mode ? this.palette.accent : this.palette.card)
       .padding({ left: RJ_SP_LG, right: RJ_SP_LG, top: RJ_SP_SM, bottom: RJ_SP_SM })
       .margin({ left: RJ_SP_SM })
       .onClick(() => {
@@ -90,7 +93,7 @@ struct Settings {
       Button({ type: ButtonType.Normal, stateEffect: true }) {
         Text(label)
           .fontSize(RJ_FS_CALLOUT)
-          .fontColor($r('app.color.rj_text'))
+          .fontColor(this.palette.text)
           .textAlign(TextAlign.Start)
           .width('100%')
       }
@@ -103,7 +106,7 @@ struct Settings {
       })
       Text('›')
         .fontSize(RJ_FS_CALLOUT)
-        .fontColor($r('app.color.rj_text3'))
+        .fontColor(this.palette.text3)
     }
     .width('100%')
     .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_SM, bottom: RJ_SP_SM })
@@ -234,7 +237,7 @@ struct Settings {
         })
         Text('设置')
           .fontSize(RJ_FS_HEADING)
-          .fontColor($r('app.color.rj_text'))
+          .fontColor(this.palette.text)
           .letterSpacing(2)
       }
       .width('100%')
@@ -244,14 +247,14 @@ struct Settings {
       Text('外观')
         .fontSize(RJ_FS_META)
         .fontFamily('monospace')
-        .fontColor($r('app.color.rj_text3'))
+        .fontColor(this.palette.text3)
         .width('100%')
         .padding({ left: RJ_SP_XXL, bottom: RJ_SP_MD })
 
       Row() {
         Text('日间 / 夜间')
           .fontSize(RJ_FS_CALLOUT)
-          .fontColor($r('app.color.rj_text'))
+          .fontColor(this.palette.text)
         Blank()
         this.appearanceChip('跟随系统', APPEARANCE_SYSTEM)
         this.appearanceChip('深色', APPEARANCE_DARK)
@@ -264,7 +267,7 @@ struct Settings {
       Text('备份')
         .fontSize(RJ_FS_META)
         .fontFamily('monospace')
-        .fontColor($r('app.color.rj_text3'))
+        .fontColor(this.palette.text3)
         .width('100%')
         .padding({ left: RJ_SP_XXL, bottom: RJ_SP_MD })
 
@@ -294,13 +297,13 @@ struct Settings {
         //    红色纪律 = 只给"错了"（解锁失败/删除确认）；常驻红字只会变成壁纸，
         //    还让设置页显得整页都在报警（党哥：红色用得太乱，要收敛）。
         //    信息本身已经把风险说清了，弱化成次级文字反而更可信。
-        .fontColor($r('app.color.rj_text3'))
+        .fontColor(this.palette.text3)
         .width('100%')
         .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_LG })
 
       Text('共 ' + this.noteCount + ' 篇 · 上次备份 ' + this.lastBackup)
         .fontSize(RJ_FS_META)
-        .fontColor($r('app.color.rj_text3'))
+        .fontColor(this.palette.text3)
         .width('100%')
         .padding({ left: RJ_SP_XXL, top: RJ_SP_SM, bottom: RJ_SP_XL })
 
@@ -308,19 +311,19 @@ struct Settings {
       Text('统计')
         .fontSize(RJ_FS_META)
         .fontFamily('monospace')
-        .fontColor($r('app.color.rj_text3'))
+        .fontColor(this.palette.text3)
         .width('100%')
         .padding({ left: RJ_SP_XXL, bottom: RJ_SP_MD })
 
       Row() {
         Text('写过日记的天数')
           .fontSize(RJ_FS_CALLOUT)
-          .fontColor($r('app.color.rj_text'))
+          .fontColor(this.palette.text)
         Blank()
         Text(this.stats.days + ' 天')
           .fontSize(RJ_FS_CAPTION)
           .fontFamily('monospace')
-          .fontColor($r('app.color.rj_text3'))
+          .fontColor(this.palette.text3)
       }
       .width('100%')
       .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
@@ -328,12 +331,12 @@ struct Settings {
       Row() {
         Text('累计字数')
           .fontSize(RJ_FS_CALLOUT)
-          .fontColor($r('app.color.rj_text'))
+          .fontColor(this.palette.text)
         Blank()
         Text(this.stats.words + ' 字')
           .fontSize(RJ_FS_CAPTION)
           .fontFamily('monospace')
-          .fontColor($r('app.color.rj_text3'))
+          .fontColor(this.palette.text3)
       }
       .width('100%')
       .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
@@ -341,12 +344,12 @@ struct Settings {
       Row() {
         Text('最长连续')
           .fontSize(RJ_FS_CALLOUT)
-          .fontColor($r('app.color.rj_text'))
+          .fontColor(this.palette.text)
         Blank()
         Text(this.stats.longest + ' 天')
           .fontSize(RJ_FS_CAPTION)
           .fontFamily('monospace')
-          .fontColor($r('app.color.rj_text3'))
+          .fontColor(this.palette.text3)
       }
       .width('100%')
       .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
@@ -355,7 +358,7 @@ struct Settings {
       Text('关于')
         .fontSize(RJ_FS_META)
         .fontFamily('monospace')
-        .fontColor($r('app.color.rj_text3'))
+        .fontColor(this.palette.text3)
         .width('100%')
         .padding({ left: RJ_SP_XXL, bottom: RJ_SP_MD })
 
@@ -366,12 +369,12 @@ struct Settings {
       Row() {
         Text('版本')
           .fontSize(RJ_FS_CALLOUT)
-          .fontColor($r('app.color.rj_text'))
+          .fontColor(this.palette.text)
         Blank()
         Text(APP_VERSION)
           .fontSize(RJ_FS_CAPTION)
           .fontFamily('monospace')
-          .fontColor($r('app.color.rj_text3'))
+          .fontColor(this.palette.text3)
       }
       .width('100%')
       .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
@@ -379,7 +382,7 @@ struct Settings {
       if (this.toast.length > 0) {
         Text(this.toast)
           .fontSize(RJ_FS_CAPTION)
-          .fontColor($r('app.color.rj_accent'))
+          .fontColor(this.palette.accent)
           .margin({ top: RJ_SP_LG })
       }
 
@@ -387,18 +390,18 @@ struct Settings {
 
       Text(APP_NAME_CN + ' · 数据只在这台设备上')
         .fontSize(RJ_FS_META)
-        .fontColor($r('app.color.rj_text3'))
+        .fontColor(this.palette.text3)
         .margin({ bottom: RJ_SP_MD })
       if (DEV_SHOW_BADGE) {
         Text('开发模式：未启用上锁（提审前务必关闭）')
           .fontSize(RJ_FS_META)
           .fontFamily('monospace')
-          .fontColor($r('app.color.rj_accent'))
+          .fontColor(this.palette.accent)
           .margin({ bottom: RJ_SP_XXXL })
       }
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.rj_bg'))
+    .backgroundColor(this.palette.bg)
   }
 }

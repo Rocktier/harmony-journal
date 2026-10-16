@@ -1,21 +1,22 @@
 import { common, ConfigurationConstant } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { window } from '@kit.ArkUI';
 
-import { APPEARANCE_DARK, APPEARANCE_LIGHT, AppearanceMode } from './Appearance';
+import { APPEARANCE_DARK, APPEARANCE_LIGHT, AppearanceMode, isDarkMode } from './Appearance';
+import { ThemePalette } from '../theme/ThemePalette';
 
-/**
- * 把"用户选的外观"落到系统（`ApplicationContext.setColorMode`）。
- *
- * 为什么走系统而不是自己换色板：本应用深浅色是**资源限定符**（`base/` 与 `dark/` 两套
- * `color.json`），系统一改 colorMode，资源自动跟着换 —— 一处生效、全应用一致，
- * 也天然满足"适配深/浅色模式"的审核要求。
- *
- * ⚠️ `COLOR_MODE_NOT_SET` = 跟随系统（默认档）。
- */
 const DOMAIN: number = 0x0000;
 const TAG: string = 'RockJournal';
 
-export function applyAppearance(ctx: common.Context, mode: AppearanceMode): void {
+/**
+ * 启动时定系统色板（**只准在 onCreate / loadContent 之前调一次**）。
+ *
+ * ⚠️ 运行中不要再调 `setColorMode`：它触发 UIContent 重建，页面栈保不住 ——
+ * 2026-10-16 装机实测：Editor 里切深色再返回直接退回桌面；栈偶尔恢复了，
+ * Index 时光列表也是空的。详见 ThemePalette 头注。
+ * 这里保留它只为：启动窗口 / 状态栏 / 输入法等**系统 UI** 与用户选择一致。
+ */
+export function applyAppearanceAtStartup(ctx: common.Context, mode: AppearanceMode): void {
   try {
     const app: common.ApplicationContext = (ctx as common.UIAbilityContext).getApplicationContext();
     if (mode === APPEARANCE_DARK) {
@@ -26,6 +27,37 @@ export function applyAppearance(ctx: common.Context, mode: AppearanceMode): void
       app.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
     }
   } catch (e) {
-    hilog.warn(DOMAIN, TAG, 'setColorMode failed: %{public}s', JSON.stringify(e));
+    hilog.warn(DOMAIN, TAG, 'startup setColorMode failed: %{public}s', JSON.stringify(e));
   }
+  // 色板进 AppStorage（页面 @StorageLink 绑它）—— 首帧前就位，不闪默认色
+  AppStorage.SetOrCreate('palette', new ThemePalette(isDarkMode(mode) === true));
+}
+
+/**
+ * 运行时切色（用户点按钮/设置页 chip）—— **换色板对象，不动页面栈**。
+ *
+ * 所有页面/组件用 `@StorageLink('palette') palette: ThemePalette` 绑色，
+ * 这里 Set 新对象 ⇒ 全 UI 重绘，栈/输入/滚动/焦点全保留。
+ * 系统栏不再由 setColorMode 带，手动补（不补的话状态栏还是旧色的字）。
+ */
+export function applyPaletteMode(ctx: common.Context, mode: AppearanceMode): void {
+  const dark: boolean = isDarkMode(mode) === true;
+  AppStorage.Set('palette', new ThemePalette(dark));
+  syncSystemBars(ctx, dark);
+}
+
+/** 状态栏文字/底色手动跟随（不再有 setColorMode 代劳） */
+export function syncSystemBars(ctx: common.Context, dark: boolean): void {
+  window.getTopWindow(ctx as common.UIAbilityContext).then((win: window.Window) => {
+    try {
+      win.setWindowSystemBarProperties({
+        statusBarColor: dark ? '#000000' : '#FAF8F3',
+        statusBarContentColor: dark ? '#FFFFFF' : '#000000'
+      });
+    } catch (e) {
+      hilog.warn(DOMAIN, TAG, 'setWindowSystemBarProperties failed: %{public}s', JSON.stringify(e));
+    }
+  }).catch((e: Error) => {
+    hilog.warn(DOMAIN, TAG, 'getTopWindow failed: %{public}s', JSON.stringify(e));
+  });
 }

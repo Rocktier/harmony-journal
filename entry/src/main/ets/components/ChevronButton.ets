@@ -18,12 +18,15 @@
  *    ⚠️ 同类教训：图标类改动**必须量尺寸**，不能只量"有没有像素"。
  */
 import { display } from '@kit.ArkUI';
+import { ThemePalette } from '../theme/ThemePalette';
 
 /** 图标视口（vp） */
 const ICON_SIZE: number = 22;
 
 @Component
 export struct ChevronButton {
+  /** 运行时色板（深浅切换 = AppStorage 换对象，页面栈不动；见 ThemePalette 头注） */
+  @StorageLink('palette') palette: ThemePalette = new ThemePalette(false);
   /** 'left' = 左 chevron（返回/上一月）；'right' = 右 chevron（下一月） */
   side: string = 'left';
   /** 无障碍标签（如"上一个月""返回"） */
@@ -53,7 +56,7 @@ export struct ChevronButton {
         .width(ICON_SIZE)
         .height(ICON_SIZE)
         .commands(this.commands())
-        .stroke($r('app.color.rj_text'))
+        .stroke(this.palette.text)
         .strokeWidth(2.4)
         .strokeLineCap(LineCapStyle.Round)
         .strokeLineJoin(LineJoinStyle.Round)

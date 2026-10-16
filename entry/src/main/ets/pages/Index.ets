@@ -16,6 +16,7 @@ import { NoteStore } from '../data/NoteStore';
 import { getStore } from '../data/NoteStoreHolder';
 import { ViewPrefs, ViewMode } from '../data/ViewPrefs';
 import { RJ_FS_BODY, RJ_FS_CALLOUT, RJ_FS_CAPTION, RJ_FS_META, RJ_FS_TITLE, RJ_RADIUS_LG, RJ_RADIUS_MD, RJ_RADIUS_SM, RJ_SP_LG, RJ_SP_MD, RJ_SP_SM, RJ_SP_VOID, RJ_SP_VOID_L, RJ_SP_XL, RJ_SP_XS, RJ_SP_XXL, RJ_SP_XXXL } from '../theme/RjTokens';
+import { ThemePalette } from '../theme/ThemePalette';
 
 /**
  * 主页面：月视图日历 + 时光时间轴 + 搜索 + 「那年今日」
@@ -57,6 +58,8 @@ interface RecallCard {
 @Entry
 @Component
 struct Index {
+  /** 运行时色板（深浅切换 = AppStorage 换对象，页面栈不动；见 ThemePalette 头注） */
+  @StorageLink('palette') palette: ThemePalette = new ThemePalette(false);
   @State private metas: NoteMeta[] = [];
   @State private mode: string = 'month';
   @State private monthKey: string = monthOf(todayKey());
@@ -143,6 +146,9 @@ struct Index {
   private refreshData(): void {
     const shown: NoteMeta[] = filterMetas(this.metas, this.onlyFavorite, this.filterMood, this.filterTag);
     this.dataSource.reload(timelineRows(shown));
+    hilog.info(DOMAIN, TAG, 'refreshData: metas=%{public}d shown=%{public}d rows=%{public}d fav=%{public}s mood=[%{public}s]',
+      this.metas.length, shown.length, this.dataSource.totalCount(),
+      this.onlyFavorite ? 'y' : 'n', this.filterMood);
   }
 
   /**
@@ -158,8 +164,8 @@ struct Index {
   private chip(label: string, active: boolean, onTap: () => void) {
     Button(label, { type: ButtonType.Normal, stateEffect: true })
       .fontSize(RJ_FS_CAPTION)
-      .fontColor(active ? $r('app.color.rj_text') : $r('app.color.rj_text3'))
-      .backgroundColor(active ? $r('app.color.rj_g100') : $r('app.color.rj_card'))
+      .fontColor(active ? this.palette.text : this.palette.text3)
+      .backgroundColor(active ? this.palette.g100 : this.palette.card)
       .padding({ left: RJ_SP_LG, right: RJ_SP_LG, top: RJ_SP_SM, bottom: RJ_SP_SM })
       .margin({ right: RJ_SP_MD })
       .onClick(() => {
@@ -235,23 +241,23 @@ struct Index {
       return Color.Transparent;
     }
     if (cell.words >= 800) {
-      return $r('app.color.rj_heat4');
+      return this.palette.heat4;
     }
     if (cell.words >= 400) {
-      return $r('app.color.rj_heat3');
+      return this.palette.heat3;
     }
     if (cell.words >= 100) {
-      return $r('app.color.rj_heat2');
+      return this.palette.heat2;
     }
-    return $r('app.color.rj_heat1');
+    return this.palette.heat1;
   }
 
   /** 热度字色：深底（400+ 的 3/4 档）纸白字、其余墨字；对比度全部 ≥ 4.5:1 */
   private heatText(cell: MonthCell): ResourceColor {
     if (cell.hasNote && cell.words >= 400) {
-      return $r('app.color.rj_bg');
+      return this.palette.bg;
     }
-    return cell.inMonth ? $r('app.color.rj_text') : $r('app.color.rj_text3');
+    return cell.inMonth ? this.palette.text : this.palette.text3;
   }
 
   /**
@@ -340,14 +346,14 @@ struct Index {
         Text('Rock私记')
           .fontSize(RJ_FS_TITLE)
           .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.rj_text'))
+          .fontColor(this.palette.text)
           .letterSpacing(2)
         if (DEV_SHOW_BADGE) {
           Text('DEV')
             .fontSize(RJ_FS_META)
             .fontFamily('monospace')
-            .fontColor($r('app.color.rj_text3'))
-            .border({ width: 1, color: $r('app.color.rj_text3') })
+            .fontColor(this.palette.text3)
+            .border({ width: 1, color: this.palette.text3 })
             .padding({ left: RJ_SP_SM, right: RJ_SP_SM, top: RJ_SP_XS, bottom: RJ_SP_XS })
             .margin({ left: RJ_SP_MD })
         }
@@ -372,8 +378,8 @@ struct Index {
          *    不写死则不同版本设备上形状不一致。圆角另外显式给（API 7 的通用属性）。
          */
         Button('写今天', { type: ButtonType.Normal, stateEffect: true })
-          .backgroundColor($r('app.color.rj_accent'))
-          .fontColor($r('app.color.rj_bg'))
+          .backgroundColor(this.palette.accent)
+          .fontColor(this.palette.bg)
           .fontSize(RJ_FS_CAPTION)
           .fontWeight(FontWeight.Bold)
           .borderRadius(RJ_RADIUS_LG)
@@ -407,8 +413,8 @@ struct Index {
           Button('月历', { type: ButtonType.Normal, stateEffect: true })
             .fontSize(RJ_FS_META)
             .fontWeight(this.mode === 'month' ? FontWeight.Bold : FontWeight.Normal)
-            .fontColor(this.mode === 'month' ? $r('app.color.rj_bg') : $r('app.color.rj_text3'))
-            .backgroundColor(this.mode === 'month' ? $r('app.color.rj_accent') : Color.Transparent)
+            .fontColor(this.mode === 'month' ? this.palette.bg : this.palette.text3)
+            .backgroundColor(this.mode === 'month' ? this.palette.accent : Color.Transparent)
             .layoutWeight(1)
             .height('100%')
             .padding(0)
@@ -419,8 +425,8 @@ struct Index {
           Button('时光', { type: ButtonType.Normal, stateEffect: true })
             .fontSize(RJ_FS_META)
             .fontWeight(this.mode === 'timeline' ? FontWeight.Bold : FontWeight.Normal)
-            .fontColor(this.mode === 'timeline' ? $r('app.color.rj_bg') : $r('app.color.rj_text3'))
-            .backgroundColor(this.mode === 'timeline' ? $r('app.color.rj_accent') : Color.Transparent)
+            .fontColor(this.mode === 'timeline' ? this.palette.bg : this.palette.text3)
+            .backgroundColor(this.mode === 'timeline' ? this.palette.accent : Color.Transparent)
             .layoutWeight(1)
             .height('100%')
             .padding(0)
@@ -441,7 +447,7 @@ struct Index {
           .buttonStyle(ButtonStyleMode.TEXTUAL)
           .fontSize(RJ_FS_META)
           .fontFamily('monospace')
-          .fontColor($r('app.color.rj_text3'))
+          .fontColor(this.palette.text3)
           .padding({ left: RJ_SP_SM, right: RJ_SP_MD, top: RJ_SP_SM, bottom: RJ_SP_SM })
           .onClick(() => {
             router.pushUrl({ url: 'pages/Settings' });
@@ -456,12 +462,12 @@ struct Index {
           Text('连续 ' + this.stats.streak + ' 天')
             .fontSize(RJ_FS_META)
             .fontFamily('monospace')
-            .fontColor($r('app.color.rj_text3'))
+            .fontColor(this.palette.text3)
         }
         Text('共 ' + this.stats.total + ' 篇')
           .fontSize(RJ_FS_META)
           .fontFamily('monospace')
-          .fontColor($r('app.color.rj_text3'))
+          .fontColor(this.palette.text3)
           .margin({ left: RJ_SP_LG })
         Blank()
         if (!this.stats.wroteToday) {
@@ -469,7 +475,7 @@ struct Index {
           Text('今天还没写')
             .fontSize(RJ_FS_META)
             .fontFamily('monospace')
-            .fontColor($r('app.color.rj_text2'))
+            .fontColor(this.palette.text2)
         }
       }
       .width('100%')
@@ -520,9 +526,9 @@ struct Index {
       // 搜索
       TextInput({ placeholder: '搜日记', text: this.query })
         .fontSize(RJ_FS_CALLOUT)
-        .backgroundColor($r('app.color.rj_card'))
-        .fontColor($r('app.color.rj_text'))
-        .placeholderColor($r('app.color.rj_text3'))
+        .backgroundColor(this.palette.card)
+        .fontColor(this.palette.text)
+        .placeholderColor(this.palette.text3)
         .height(38)
         // 热区补到 44vp（38 的框 + 上下各扩 3，视觉不变、手指好按）
         .responseRegion({ x: 0, y: -3, width: '100%', height: 44 })
@@ -542,7 +548,7 @@ struct Index {
           Text('那年今日')
             .fontSize(RJ_FS_META)
             .fontFamily('monospace')
-            .fontColor($r('app.color.rj_text3'))
+            .fontColor(this.palette.text3)
             .width('100%')
             .padding({ bottom: RJ_SP_MD })
           ForEach(this.recall, (card: RecallCard) => {
@@ -554,11 +560,11 @@ struct Index {
                   Text(card.years)
                     .fontSize(RJ_FS_META)
                     .fontFamily('monospace')
-                    .fontColor($r('app.color.rj_brand'))
+                    .fontColor(this.palette.brand)
                   Text(card.meta.date)
                     .fontSize(RJ_FS_META)
                     .fontFamily('monospace')
-                    .fontColor($r('app.color.rj_text3'))
+                    .fontColor(this.palette.text3)
                     .margin({ left: RJ_SP_MD })
                   if (this.moodEmoji(card.meta).length > 0) {
                     Text(this.moodEmoji(card.meta))
@@ -572,7 +578,7 @@ struct Index {
                   Text(card.preview)
                     .fontSize(RJ_FS_CALLOUT)
                     .fontFamily('serif')
-                    .fontColor($r('app.color.rj_text'))
+                    .fontColor(this.palette.text)
                     .margin({ top: RJ_SP_SM })
                     .maxLines(2)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -590,7 +596,7 @@ struct Index {
         }
         .width('100%')
         .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_SM, bottom: RJ_SP_LG })
-        .border({ width: { bottom: 1 }, color: $r('app.color.rj_line') })
+        .border({ width: { bottom: 1 }, color: this.palette.line })
       }
 
       if (this.query.length > 0) {
@@ -598,7 +604,7 @@ struct Index {
         if (this.hits.length === 0) {
           Text('没有找到')
             .fontSize(RJ_FS_CAPTION)
-            .fontColor($r('app.color.rj_text3'))
+            .fontColor(this.palette.text3)
             .margin({ top: RJ_SP_VOID })
         }
         List() {
@@ -608,10 +614,10 @@ struct Index {
                 Text(hit.date)
                   .fontSize(RJ_FS_CAPTION)
                   .fontFamily('monospace')
-                  .fontColor($r('app.color.rj_text3'))
+                  .fontColor(this.palette.text3)
                 Text(hit.snippet)
                   .fontSize(RJ_FS_CALLOUT)
-                  .fontColor($r('app.color.rj_text'))
+                  .fontColor(this.palette.text)
                   .margin({ top: RJ_SP_SM })
                   .maxLines(2)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -626,7 +632,7 @@ struct Index {
           }, (hit: SearchHit) => 'h:' + hit.id)
         }
         .layoutWeight(1)
-        .divider({ strokeWidth: 1, color: $r('app.color.rj_line') })
+        .divider({ strokeWidth: 1, color: this.palette.line })
       } else if (this.mode === 'month') {
         // 月视图
         Row() {
@@ -641,7 +647,7 @@ struct Index {
           Text(this.monthKey)
             .fontSize(RJ_FS_CALLOUT)
             .fontFamily('monospace')
-            .fontColor($r('app.color.rj_text'))
+            .fontColor(this.palette.text)
             .letterSpacing(2)
           ChevronButton({
             side: 'right',
@@ -683,7 +689,7 @@ struct Index {
                   //    它的文字框比别的格高出一截（1.5vp×2），月历行高不齐会跳（实测抓到）。
                   .border({
                     width: 1.5,
-                    color: cell.isToday ? $r('app.color.rj_accent') : Color.Transparent,
+                    color: cell.isToday ? this.palette.accent : Color.Transparent,
                     radius: RJ_RADIUS_SM
                   })
               }
@@ -708,10 +714,10 @@ struct Index {
           Column() {
             Text('还没有日记')
               .fontSize(RJ_FS_CALLOUT)
-              .fontColor($r('app.color.rj_text3'))
+              .fontColor(this.palette.text3)
             Text('点下面的按钮，写今天')
               .fontSize(RJ_FS_CAPTION)
-              .fontColor($r('app.color.rj_text3'))
+              .fontColor(this.palette.text3)
               .margin({ top: RJ_SP_MD })
           }
           .margin({ top: RJ_SP_VOID_L })
@@ -724,7 +730,7 @@ struct Index {
                 Text(row.monthKey)
                   .fontSize(RJ_FS_META)
                   .fontFamily('monospace')
-                  .fontColor($r('app.color.rj_text3'))
+                  .fontColor(this.palette.text3)
                   .width('100%')
                   .padding({ top: RJ_SP_XL, bottom: RJ_SP_MD })
               } else if (row.meta !== null) {
@@ -734,13 +740,13 @@ struct Index {
                       Text(row.meta.date)
                         .fontSize(RJ_FS_CAPTION)
                         .fontFamily('monospace')
-                        .fontColor($r('app.color.rj_text2'))
+                        .fontColor(this.palette.text2)
                       // 同一天多篇时补个时间，否则几行日期一模一样、看不出是几篇
                       if (row.showTime) {
                         Text(timeOfDay(row.meta.createdAt))
                           .fontSize(RJ_FS_META)
                           .fontFamily('monospace')
-                          .fontColor($r('app.color.rj_text3'))
+                          .fontColor(this.palette.text3)
                           .margin({ left: RJ_SP_MD })
                       }
                       if (this.moodEmoji(row.meta).length > 0) {
@@ -752,21 +758,21 @@ struct Index {
                         Text('★')
                           .fontSize(RJ_FS_CALLOUT)
                           // 收藏 = 钤印 ⇒ 品牌茶褐（与月视图 ★、Editor 收藏星、日历日期点四处同色）
-                          .fontColor($r('app.color.rj_brand'))
+                          .fontColor(this.palette.brand)
                           .margin({ left: RJ_SP_MD })
                       }
                       Blank()
                       Text(row.meta.words + ' 字')
                         .fontSize(RJ_FS_META)
                         .fontFamily('monospace')
-                        .fontColor($r('app.color.rj_text3'))
+                        .fontColor(this.palette.text3)
                     }
                     .width('100%')
                     if (row.meta.tags.length > 0) {
                       Text('#' + row.meta.tags.join(' #'))
                         .fontSize(RJ_FS_META)
                         .fontFamily('monospace')
-                        .fontColor($r('app.color.rj_text3'))
+                        .fontColor(this.palette.text3)
                         .margin({ top: RJ_SP_SM })
                     }
                     // 摘要来自索引缓存（零额外 IO）；老数据没有 ⇒ 这一行就没有，不硬凑。
@@ -775,7 +781,7 @@ struct Index {
                       Text(row.meta.preview)
                         .fontSize(RJ_FS_CALLOUT)
                         .fontFamily('serif')
-                        .fontColor($r('app.color.rj_text'))
+                        .fontColor(this.palette.text)
                         .margin({ top: RJ_SP_SM })
                         .maxLines(2)
                         .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -806,7 +812,7 @@ struct Index {
           }, (row: TimelineRow) => row.key)
         }
         .layoutWeight(1)
-        .divider({ strokeWidth: 1, color: $r('app.color.rj_line') })
+        .divider({ strokeWidth: 1, color: this.palette.line })
       }
 
       // ⚠️ 原来这里还有一个底部大按钮「写今天」，现已提到头部 ——
@@ -814,7 +820,7 @@ struct Index {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.rj_bg'))
+    .backgroundColor(this.palette.bg)
     // 视图切换**滑动手势**（2026-10-14 党哥：「月/时光」整页瞬切"转换奇怪"）：
     // 月历左滑进时光、时光右滑回月历 —— 滑一下给两个视图"并排"的空间隐喻，
     // 与分段控件双通道（点/滑都行，系统记住偏好）。
