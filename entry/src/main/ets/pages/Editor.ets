@@ -435,6 +435,23 @@ struct Editor {
       const imgBlock: Block = { type: 'img', spans: [], ref: this.imgRefs[i] };
       withImages.push(imgBlock);
     }
+    // 空日记守卫：正文无字且无图 ——
+    //   已有条目 ⇒ 保存即删除（误触日历建出的空壳靠它清掉）；
+    //   新条目 ⇒ 不落盘，避免产生 0 字空日记（2026-10-19 模拟器实测踩到）。
+    if (wordCountOf(blocks) === 0 && this.imgRefs.length === 0) {
+      if (this.entryId.length > 0) {
+        const del: boolean = this.store.deleteEntry(this.entryId);
+        this.entryId = '';
+        this.saved = del;
+        this.words = 0;
+        if (del) {
+          this.savedAt = timeOfDay(Date.now());
+          this.resolveDayList();
+        }
+        hilog.info(DOMAIN, TAG, 'save empty => delete id ok=%{public}s', del);
+      }
+      return;
+    }
     const ok: boolean = this.store.saveEntry(this.entryId, this.date, withImages, this.mood, this.moodText,
       this.favorite, parseTags(this.tagsText));
     this.saved = ok;
