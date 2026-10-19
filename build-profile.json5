@@ -35,24 +35,19 @@
         "compatibleSdkVersion": 15,
         "runtimeOS": "OpenHarmony",
         "buildOption": {}
+      },
+      // ── 正式产物（2026-10-19 放开 release；signingConfig 等证书到位后补）──
+      {
+        // **上架发布产物**：Build App 出 .app 包（AGC 提审用）。
+        // ⚠️ signingConfig 暂缺 —— AGC 发布证书（keys/rockjournal-v1/）未申请，
+        // 当前构建出 **unsigned** 包，只差最后一步签名；证书到位后照
+        // RockReader 的 release signingConfig 结构补上即可提审。
+        "name": "release",
+        "compatibleSdkVersion": "5.0.4(16)",
+        "targetSdkVersion": "6.0.0(20)",
+        "runtimeOS": "HarmonyOS",
+        "buildOption": {}
       }
-      // ── 正式产物（占位，签名证书到位后放开 signingConfigs 并补进 products）──
-      // {
-      //   "name": "default",          // 日常调试（HarmonyOS 单框架 6.x）
-      //   "signingConfig": "default",
-      //   "compatibleSdkVersion": "5.0.4(16)",
-      //   "targetSdkVersion": "6.0.0(20)",
-      //   "runtimeOS": "HarmonyOS",
-      //   "buildOption": {}
-      // },
-      // {
-      //   "name": "release",          // 上架产物（Build App 出 .app 包，AGC 提审用）
-      //   "signingConfig": "release",
-      //   "compatibleSdkVersion": "5.0.4(16)",
-      //   "targetSdkVersion": "6.0.0(20)",
-      //   "runtimeOS": "HarmonyOS",
-      //   "buildOption": {}
-      // }
     ],
     "buildModeSet": [
       {
@@ -88,7 +83,8 @@
           "applyToProducts": [
             "default",
             "ci",
-            "compat15"
+            "compat15",
+            "release"
           ]
         }
       ]

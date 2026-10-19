@@ -25,8 +25,11 @@ Push-Location $root
 node "$ide\tools\hvigor\bin\hvigorw.js" assembleApp --mode project -p product=release -p buildMode=release --no-daemon
 Pop-Location
 
-$app = Get-ChildItem (Join-Path $root "build\outputs\release") -Filter *signed.app |
+$app = Get-ChildItem (Join-Path $root "build\outputs\release") -Filter *.app |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
-if (-not $app) { throw "构建结束但未找到 signed .app 产物 —— 视为失败" }
+if (-not $app) { throw "构建结束但未找到 .app 产物 —— 视为失败" }
 "==> 产物：$($app.FullName)（$([math]::Round($app.Length/1KB)) KB）"
 "==> SHA256：$((Get-FileHash $app.FullName -Algorithm SHA256).Hash)"
+if ($app.Name -like "*unsigned*") {
+    "==> ⚠️ 未签名包（AGC 发布证书未配置）——不能提审；配好 release signingConfig 重跑即出 signed 包"
+}
