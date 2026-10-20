@@ -14,6 +14,7 @@ function entry(date: string, id: string, createdAt: number = 1): NoteMeta {
   return {
     id: id, date: date, createdAt: createdAt, mood: '', moodText: '',
     preview: '', updatedAt: createdAt, words: 0, hasImage: false, imgRef: '',
+    unlockAt: 0,
     favorite: false, tags: []
   };
 }

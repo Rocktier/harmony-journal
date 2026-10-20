@@ -36,13 +36,14 @@
         "runtimeOS": "OpenHarmony",
         "buildOption": {}
       },
-      // ── 正式产物（2026-10-19 放开 release；signingConfig 等证书到位后补）──
+      // ── 正式产物（2026-10-20 接上 AGC 发布签名，可出 signed .app 提审）──
       {
         // **上架发布产物**：Build App 出 .app 包（AGC 提审用）。
-        // ⚠️ signingConfig 暂缺 —— AGC 发布证书（keys/rockjournal-v1/）未申请，
-        // 当前构建出 **unsigned** 包，只差最后一步签名；证书到位后照
-        // RockReader 的 release signingConfig 结构补上即可提审。
+        // 签名 = 复用 RockReader 的 AGC 发布证书（华为个人账号全账号仅 1 张发布证书，
+        // 多应用共用是官方常规做法），只为 Rock私记包名单独申请了发布 Profile：
+        //   keys/rockjournal-v1.p7b（内含 com.rocktier.rockjournal，2026-10-20 从 AGC 下载）
         "name": "release",
+        "signingConfig": "release",
         "compatibleSdkVersion": "5.0.4(16)",
         "targetSdkVersion": "6.0.0(20)",
         "runtimeOS": "HarmonyOS",
@@ -69,6 +70,27 @@
           "signAlg": "SHA256withECDSA",
           "storeFile": "C:\\Users\\Dang\\.ohos\\config\\default_RockJournal_-p2vtLEhKneOX_JOJ5IP7GOUeFbxhtuP9YNypEWGIUM=.p12",
           "storePassword": "0000001BCF15641E5C9ABA1D0DE7AF30BE3631619DE0E395893A2D07BE8EAF4709D433FCABFA9B94091D26"
+        }
+      },
+      {
+        // **上架发布签名**（2026-10-20）：复用 AGC 上 rockreader-v2 那张发布证书
+        // （个人开发者账号全账号仅 1 张发布证书，多应用共用是官方常规做法），
+        // Profile 用 Rock私记专属的 rockjournal-v1.p7b（绑定 com.rocktier.rockjournal）。
+        // 明文口令仅存本机 F:\AI\HarmonyOS\keys\rockreader-v2-password.txt，工程不公开。
+        "name": "release",
+        "type": "HarmonyOS",
+        "material": {
+          // 口令字段 = DevEco 加密串（明文直填 hvigor 会报 00303116/00303117）。
+          // 这两个串是同机 DevEco 对同一把钥匙（rockreader-v2.p12 同一口令）生成的，
+          // 与 RockReader 的 release signingConfig 完全一致；明文见
+          // F:\AI\HarmonyOS\keys\rockreader-v2-password.txt（不进 git）。
+          "storeFile": "F:/AI/HarmonyOS/keys/rockreader-v2.p12",
+          "storePassword": "00000031255ED0D0D73CF05F75F767176D250A3FE6FB9DDA03C858110A9A78CFA27D2DF64B7204B29C9E19F1324540B3BF380FFADAC4EA01C0BE7D2BCFC9FA99AE",
+          "keyAlias": "rockreader-v2",
+          "keyPassword": "00000031EF025B173DDC7EDCBA7FCB8FC66A69456FD91CB9F650A8B1A27C60593CB50C42BBB5E9694140CCD8A8D4F2A9228EEE2884017955EB3A861FAFA750E1AB",
+          "signAlg": "SHA256withECDSA",
+          "profile": "F:/AI/HarmonyOS/keys/rockjournal-v1.p7b",
+          "certpath": "F:/AI/HarmonyOS/keys/rockreader-v2.cer"
         }
       }
     ]

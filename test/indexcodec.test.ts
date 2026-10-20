@@ -20,6 +20,7 @@ function entry(date: string, id: string, extra: Partial<NoteMeta> = {}): NoteMet
     words: 0,
     hasImage: false,
     imgRef: '',
+    unlockAt: 0,
     favorite: false,
     tags: []
   };

@@ -157,9 +157,14 @@ export class NoteStore {
    *
    * ⚠️ 一天多篇之后，写必须是"更新指定的那篇"，不能按 date 覆盖 ——
    * 否则在同一天打开第二篇时，会悄悄把第一篇内容写没了。
+   *
+   * @param unlockAt 时间胶囊解锁时刻（毫秒）；`0` = 普通日记。设为胶囊时
+   *   **preview/mood/moodText/tags/imgRef 一律封存**（不落索引）——
+   *   索引整块可读，这些字段任何一个漏进索引，锁就形同虚设（2026-10-20
+   *   同质化整改的安全边界，单测 capsule.test.ts 锁着这条纪律）。
    */
   saveEntry(id: string, date: string, blocks: Block[], mood: string, moodText: string,
-    favorite: boolean, tags: string[]): boolean {
+    favorite: boolean, tags: string[], unlockAt: number = 0): boolean {
     try {
       let entryId: string = id;
       if (entryId.length === 0) {
@@ -175,25 +180,48 @@ export class NoteStore {
       }
       const prev: NoteMeta | null = this.byId(entryId);
       const now: number = Date.now();
+      // 胶囊封存：元数据全空 + unlockAt 保留（列表要显示倒计时）。
+      // 正文密文照写（那是加密的），封存的只是"能剧透内容的索引字段"。
+      const sealed: boolean = unlockAt > 0;
       this.upsertMeta({
         id: entryId,
         date: date,
         createdAt: prev !== null ? prev.createdAt : now,
-        mood: mood,
-        moodText: moodText,
-        preview: previewText(this.plainOfBlocks(blocks), PREVIEW_LEN),
+        mood: sealed ? '' : mood,
+        moodText: sealed ? '' : moodText,
+        preview: sealed ? '' : previewText(this.plainOfBlocks(blocks), PREVIEW_LEN),
         updatedAt: now,
         words: wordCountOf(blocks),
-        hasImage: blocks.some((b: Block) => b.type === 'img'),
-        imgRef: this.firstImgRef(blocks),
+        hasImage: sealed ? false : blocks.some((b: Block) => b.type === 'img'),
+        imgRef: sealed ? '' : this.firstImgRef(blocks),
         favorite: favorite,
-        tags: sanitizeTags(tags)
+        tags: sealed ? [] : sanitizeTags(tags),
+        unlockAt: unlockAt
       });
       return this.saveIndex();
     } catch (e) {
       hilog.error(DOMAIN, TAG, 'saveEntry failed: %{public}s', JSON.stringify(e));
       return false;
     }
+  }
+
+  /**
+   * 翻收藏（2026-10-20 修华为审核实测 bug：时光轴里点 ★ 没反应）
+   *
+   * 只动索引里的 `favorite` 位，**不重写正文密文** —— 收藏是索引级元数据，
+   * 为改一个布尔值把整篇解密再加密一遍纯属浪费（还多一次 IO 失败面）。
+   * 找不到 id 返回 false（调用方据此打日志）。
+   */
+  toggleFavorite(id: string): boolean {
+    for (let i: number = 0; i < this.index.length; i++) {
+      if (this.index[i].id === id) {
+        this.index[i].favorite = !this.index[i].favorite;
+        this.index[i].updatedAt = Date.now();
+        hilog.info(DOMAIN, TAG, 'toggleFavorite %{public}s => %{public}s', id, this.index[i].favorite ? 'on' : 'off');
+        return this.saveIndex();
+      }
+    }
+    return false;
   }
 
   /** 删一篇（只删本应用的副本；用户原文件从没进过我们的地盘） */
@@ -385,7 +413,9 @@ export class NoteStore {
       if (this.byId(id) !== null) {
         id = this.newEntryId();
       }
-      if (this.saveEntry(id, it.date, it.blocks, it.meta.mood, it.meta.moodText, it.meta.favorite, it.meta.tags)) {
+      // 老备份（1.0.1 及以前）的 meta 没有 unlockAt ⇒ undefined ⇒ 当普通日记恢复
+      const savedUnlockAt: number = typeof it.meta.unlockAt === 'number' ? it.meta.unlockAt : 0;
+      if (this.saveEntry(id, it.date, it.blocks, it.meta.mood, it.meta.moodText, it.meta.favorite, it.meta.tags, savedUnlockAt)) {
         n++;
       }
     }

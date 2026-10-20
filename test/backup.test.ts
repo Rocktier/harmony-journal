@@ -16,6 +16,7 @@ function metaOf(date: string, id: string, updatedAt: number, words: number): Not
   return {
     id: id, date: date, createdAt: updatedAt, mood: 'happy', moodText: '', preview: '',
     updatedAt: updatedAt, words: words, hasImage: false, imgRef: '',
+    unlockAt: 0,
     favorite: false, tags: []
   };
 }

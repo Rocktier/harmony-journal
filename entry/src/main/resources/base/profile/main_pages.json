@@ -3,6 +3,7 @@
     "pages/Unlock",
     "pages/Index",
     "pages/Editor",
+    "pages/Capsule",
     "pages/Settings",
     "pages/Privacy"
   ]

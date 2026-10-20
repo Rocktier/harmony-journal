@@ -74,6 +74,22 @@ export interface NoteMeta {
    *    否则想显示缩略图就得 readEntry 一遍，又是每行一次 IO（铁律①）。
    */
   imgRef: string;
+  /**
+   * 时间胶囊的解锁时间戳（毫秒）；`0` = 普通日记。
+   *
+   * 用户视角：写一封"给未来的信"，设定一个未来的日期，到期前谁都不能读
+   * （包括自己——靠的不是密码，是"还没到时间"）。这是 Rock私记区别于
+   * 备忘录类应用的核心功能（2026-10-20 华为同质化拒因的整改，见 07-同质化应对）。
+   *
+   * ⚠️ 封存纪律（安全边界，改保存路径时必读）：
+   *    索引整块在内存/沙箱里可读 ⇒ **胶囊的 preview/mood/moodText/tags/imgRef
+   *    一律不得落索引**（否则锁形同虚设）。只有 unlockAt 本身保留——
+   *    列表要靠它显示倒计时。落在保存路径保证（见 NoteStore.saveEntry），
+   *    这里只做类型声明。
+   *
+   * ⚠️ 老数据没有这个字段 ⇒ 解析时按 0 处理（IndexCodec.normalizeEntries）。
+   */
+  unlockAt: number;
 }
 
 /**
@@ -344,7 +360,9 @@ export function yearsAgoLabel(past: string, today: string): string {
   return diff > 0 ? diff + ' 年前' : '';
 }
 
-/** 时间轴的一行：要么是年月标题，要么是一篇日记 */
+/**
+ * 时间轴的一行：要么是年月标题，要么是一篇日记
+ */
 export interface TimelineRow {
   /** 'header' | 'note' */
   kind: string;
@@ -359,12 +377,33 @@ export interface TimelineRow {
 }
 
 /**
+ * 日记行的 key（**LazyForEach 的生死线**，2026-10-21 实测 bug 的修复处）。
+ *
+ * ⚠️ 为什么带胶囊标签：普通日记「设为时间胶囊」后，`n:<id>` 这个 key 没变，
+ *    LazyForEach 据此认为 item 没变 ⇒ **不重新执行 itemGenerator** ⇒ 行里
+ *    还渲染着旧的摘要/字数/心情（实测：明明锁上了，列表仍剧透全文前 42 字）。
+ *    这与日历染色、收藏星是同一族坑（key 不变 = 不重建），解法同源：
+ *    让 key 能区分状态 —— 锁定/解锁/跨天（倒计时数字变）都换 key，强制重建。
+ *    普通日记恒定 '' 后缀 ⇒ 不会带来额外重建。
+ */
+function noteRowKey(m: NoteMeta, nowMs: number): string {
+  if (!isCapsule(m)) {
+    return 'n:' + m.id;
+  }
+  if (capsuleLocked(m, nowMs)) {
+    return 'n:' + m.id + ':L' + daysUntilUnlock(m, nowMs);
+  }
+  return 'n:' + m.id + ':O';
+}
+
+/**
  * 把日记列表压成"扁平"时间轴行（月份变化处插入标题行）。
  *
  * ⚠️ 前置：metas 必须是 `store.list()` 的顺序（date↓, createdAt↓），本函数不排序 ——
  *    排序是索引的职责，重复排两处容易不一致。
+ * @param nowMs 当前时间戳（胶囊 key 的判定基准；传 0 = 全部按未到期处理，测试用）
  */
-export function timelineRows(metas: NoteMeta[]): TimelineRow[] {
+export function timelineRows(metas: NoteMeta[], nowMs: number = 0): TimelineRow[] {
   const perDay: Map<string, number> = new Map<string, number>();
   for (let i: number = 0; i < metas.length; i++) {
     const key: string = metas[i].date;
@@ -383,7 +422,7 @@ export function timelineRows(metas: NoteMeta[]): TimelineRow[] {
     }
     const n: number | undefined = perDay.get(m.date);
     const many: boolean = n !== undefined && n > 1;
-    const row: TimelineRow = { kind: 'note', key: 'n:' + m.id, monthKey: mk, meta: m, showTime: many };
+    const row: TimelineRow = { kind: 'note', key: noteRowKey(m, nowMs), monthKey: mk, meta: m, showTime: many };
     rows.push(row);
   }
   return rows;
@@ -444,13 +483,19 @@ export interface JournalStats {
  *     否则一到凌晨用户的"连续 30 天"就归零，那是惩罚不是激励。
  *     是否断在今天，由 `wroteToday` 单独表达（界面上再提示"今天还没写"）。
  *  ② 昨天也没写 ⇒ 链已经断了 ⇒ 连续 = 0（不粉饰）。
+ *
+ * ⚠️ 时间胶囊（2026-10-20）：**未到期胶囊不计入 words**（从数字大小能反推信写了多长，
+ *    那是封存纪律在统计侧的对应物）；篇数/天数照算（"坚持写过"的痕迹可见）。
+ *    `countsForStats` 是唯一切口，单测锁着。
  */
-export function computeStats(metas: NoteMeta[], today: string): JournalStats {
+export function computeStats(metas: NoteMeta[], today: string, nowMs: number = 0): JournalStats {
   const seen: Set<string> = new Set<string>();
   let words: number = 0;
   for (let i: number = 0; i < metas.length; i++) {
     seen.add(metas[i].date);
-    words = words + metas[i].words;
+    if (countsForStats(metas[i], nowMs)) {
+      words = words + metas[i].words;
+    }
   }
   const dates: string[] = [];
   seen.forEach((d: string) => {
@@ -648,4 +693,76 @@ export function searchNotes(texts: NoteText[], query: string): SearchHit[] {
     hits.push(hit);
   }
   return hits;
+}
+
+// ── 时间胶囊（2026-10-20 同质化拒因整改）—— 纯逻辑，全部带单测 ─────────────────
+
+/** 一天的毫秒数（胶囊解锁日期的计算基准） */
+const DAY_MS: number = 86400000;
+
+/** 这篇是不是时间胶囊（unlockAt > 0 即是；老数据没有该字段 ⇒ 按 0 处理） */
+export function isCapsule(meta: NoteMeta): boolean {
+  return typeof meta.unlockAt === 'number' && meta.unlockAt > 0;
+}
+
+/** 胶囊是否仍未到期（锁着的）。非胶囊一律 false */
+export function capsuleLocked(meta: NoteMeta, nowMs: number): boolean {
+  return isCapsule(meta) && meta.unlockAt > nowMs;
+}
+
+/**
+ * 距解锁还有几天（向上取整：今天设、明天解锁 = "还有 1 天"）。
+ * 已到期/非胶囊返回 0。解锁时刻已过但不满一天也返回 0（要显示了，页面会走已解锁分支）。
+ */
+export function daysUntilUnlock(meta: NoteMeta, nowMs: number): number {
+  if (!capsuleLocked(meta, nowMs)) {
+    return 0;
+  }
+  return Math.ceil((meta.unlockAt - nowMs) / DAY_MS);
+}
+
+/**
+ * 解锁日期（本地时区零点）→ 时间戳。
+ * 用本地零点而不是 UTC 零点：用户的"明天"是本地日历上的明天
+ * （N3 修复的同款教训——"今天"只能有一个定义，且必须是用户看到的那个）。
+ */
+export function unlockTsOfDate(y: number, m: number, d: number): number {
+  return new Date(y, m - 1, d).getTime();
+}
+
+/**
+ * 最早可选的解锁时刻 = **明天**本地零点（不让设今天——当天就解锁的胶囊没有意义）。
+ * 传 nowMs 是为了可单测（生产传 Date.now()）。
+ */
+export function earliestUnlock(nowMs: number): number {
+  const now: Date = new Date(nowMs);
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
+}
+
+/**
+ * 时间胶囊在列表/日历里的状态标签。
+ *
+ * 锁定态只给"还有 N 天"—— **绝不泄露任何内容线索**（字数/心情/摘要统统不给，
+ * 那是保存路径的封存纪律在展示侧的对应物）。
+ */
+export function capsuleBadge(meta: NoteMeta, nowMs: number): string {
+  if (!isCapsule(meta)) {
+    return '';
+  }
+  if (capsuleLocked(meta, nowMs)) {
+    return '⏳ 还有 ' + daysUntilUnlock(meta, nowMs) + ' 天';
+  }
+  return '已解锁';
+}
+
+/**
+ * 统计口径：这篇的字数是否计入"总字数/热力图"。
+ * 未到期胶囊**不计**（否则从数字大小能反推信写了多长，封存纪律在统计侧的对应物）；
+ * 已解锁胶囊恢复正常计量。
+ */
+export function countsForStats(meta: NoteMeta, nowMs: number): boolean {
+  if (!isCapsule(meta)) {
+    return true;
+  }
+  return meta.unlockAt <= nowMs;
 }

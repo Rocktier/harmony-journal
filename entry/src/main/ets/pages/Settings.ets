@@ -9,7 +9,7 @@ import { applyPaletteMode } from '../common/AppearanceApply';
 import { APP_NAME_CN, APP_VERSION } from '../common/AppMeta';
 import { DEV_SHOW_BADGE } from '../common/DevFlags';
 import { AppearancePrefs } from '../data/AppearancePrefs';
-import { JournalStats, computeStats, dateKeyOf, todayKey } from '../data/NoteMeta';
+import { JournalStats, capsuleLocked, computeStats, dateKeyOf, todayKey } from '../data/NoteMeta';
 import { ChevronButton } from '../components/ChevronButton';
 import { getStore } from '../data/NoteStoreHolder';
 import {
@@ -158,13 +158,24 @@ struct Settings {
    *
    * ⚠️ 为什么必须提示：加密备份落在外面也是密文，而这个是**明文** ——
    * 用户如果按"反正有密码"的心智把它丢网盘就露了。设置页已写明"不加密，请自行保管"。
+   *
+   * ⚠️ 未到期的时间胶囊**不导出**（2026-10-20）：它锁着的全部意义就是
+   * "现在不能读"，而 TXT/MD 不加密 —— 导出去等于替用户提前拆信。
+   * 加密备份照常全量（那是密文，恢复后胶囊该锁还锁）。
    */
   private async doExportReadable(markdown: boolean): Promise<void> {
-    const items: BackupItem[] = this.store.exportAll();
-    if (items.length === 0) {
+    const all: BackupItem[] = this.store.exportAll();
+    if (all.length === 0) {
       this.toast = '还没有日记可以导出';
       return;
     }
+    const nowMs: number = Date.now();
+    const items: BackupItem[] = all.filter((it: BackupItem) => !capsuleLocked(it.meta, nowMs));
+    if (items.length === 0) {
+      this.toast = '没有可导出的日记（时间胶囊到期后才导出）';
+      return;
+    }
+    const skipped: number = all.length - items.length;
     const text: string = markdown ? toMarkdown(items) : toPlainText(items);
     const bytes: Uint8Array = utf8Encode(text);
     const ext: string = markdown ? EXT_MD : EXT_TXT;
@@ -184,8 +195,10 @@ struct Settings {
       } finally {
         fs.closeSync(file);
       }
-      this.toast = '已导出 ' + items.length + ' 篇（明文）';
-      hilog.info(DOMAIN, TAG, 'exported readable %{public}d notes, md=%{public}s', items.length, String(markdown));
+      this.toast = '已导出 ' + items.length + ' 篇（明文）' +
+        (skipped > 0 ? '，跳过 ' + skipped + ' 篇未到期胶囊' : '');
+      hilog.info(DOMAIN, TAG, 'exported readable %{public}d notes, md=%{public}s skipped=%{public}d',
+        items.length, String(markdown), skipped);
     } catch (e) {
       hilog.error(DOMAIN, TAG, 'readable export failed: %{public}s', JSON.stringify(e));
       this.toast = '导出取消或失败';

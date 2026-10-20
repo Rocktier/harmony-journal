@@ -133,7 +133,10 @@ export function normalizeEntries(raw: NoteMeta[], legacy: boolean): NoteMeta[] {
       hasImage: it.hasImage === true,
       imgRef: typeof it.imgRef === 'string' ? it.imgRef : '',
       favorite: it.favorite === true,
-      tags: sanitizeTags(it.tags)
+      tags: sanitizeTags(it.tags),
+      // 老索引（1.0.1 及以前）没有 unlockAt ⇒ 按普通日记处理（0）。
+      // ⚠️ 判 `> 0` 而不是"是不是数字"：0/负/NaN 都当没有。
+      unlockAt: typeof it.unlockAt === 'number' && it.unlockAt > 0 ? it.unlockAt : 0
     };
     out.push(entry);
   }

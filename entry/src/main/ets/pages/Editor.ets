@@ -10,8 +10,11 @@ import { AppearanceIconButton } from '../components/AppearanceIconButton';
 import { Block, Span, UNDO_LIMIT, blocksToJson, jsonToBlocks, popSnapshot, pushSnapshot, wordCountOf } from '../data/NoteBlocks';
 import { blocksToLines, linesToBlocks } from '../data/NoteBridge';
 import {
-  MOODS, Mood, NoteMeta, isValidDateKey, parseTags, tagsToText, timeOfDay, todayKey
+  MOODS, Mood, NoteMeta, dateKeyOf, isValidDateKey, parseTags, tagsToText, timeOfDay, todayKey
 } from '../data/NoteMeta';
+import { capsuleLocked, earliestUnlock, isCapsule } from '../data/NoteMeta';
+import { JournalTemplate, TEMPLATES } from '../data/JournalTemplates';
+import { CapsuleDateDialog } from '../components/CapsuleDateDialog';
 import { NoteStore } from '../data/NoteStore';
 import { APPEARANCE_SYSTEM, AppearanceMode, nextAppearance } from '../common/Appearance';
 import { applyPaletteMode } from '../common/AppearanceApply';
@@ -63,6 +66,14 @@ struct Editor {
   @State private favorite: boolean = false;
   /** 标签输入串（逗号分隔；保存时才解析成数组） */
   @State private tagsText: string = '';
+  /** 时间胶囊开关（2026-10-20：给未来的信，见 NoteMeta.unlockAt 头注） */
+  @State private capsuleOn: boolean = false;
+  /** 解锁时刻（毫秒，本地零点）；capsuleOn=false 时忽略 */
+  @State private capsuleUnlockAt: number = 0;
+  /** 这篇是否正处于"锁着"的状态（打开已锁的胶囊 ⇒ 编辑器进入只读守卫，见 aboutToAppear） */
+  @State private capsuleLockedNow: boolean = false;
+  /** 模板条是否展开（新篇空正文时才给入口） */
+  @State private templatesOpen: boolean = false;
   /** 最近一次成功保存的时刻（HH:mm）—— 给"真的存上了"一个确定感 */
   @State private savedAt: string = '';
   /** 撤销/重做是否可用（块级快照；本 SDK 的 RichEditor 无 undo API） */
@@ -76,6 +87,32 @@ struct Editor {
   private images: ImageStore = new ImageStore();
   private controller: RichEditorController = new RichEditorController();
   private options: RichEditorOptions = { controller: this.controller };
+  /**
+   * 打开解锁日期选择。
+   *
+   * ⚠️ controller 在这里**动态 new** 而不是字段初始化器里建：builder 的入参
+   *    （当前 unlockAt）在构造那一刻就要固化，字段初始化器里建的话，
+   *    改完日期再开对话框，selected 还是旧值。新建的旧 controller 随 GC 回收。
+   */
+  private openCapsuleDialog(): void {
+    const current: number = this.capsuleUnlockAt > 0 ? this.capsuleUnlockAt : earliestUnlock(Date.now());
+    const dlg: CustomDialogController = new CustomDialogController({
+      builder: CapsuleDateDialog({
+        unlockAt: current,
+        onConfirm: (unlockAt: number) => {
+          this.capsuleUnlockAt = unlockAt;
+          dlg.close();
+          this.save();
+        },
+        onCancel: () => {
+          dlg.close();
+        }
+      }),
+      customStyle: true,
+      alignment: DialogAlignment.Bottom
+    });
+    dlg.open();
+  }
   /** 自动保存防抖计时器（-1 = 没有待保存的定时器） */
   private saveTimer: number = -1;
   /** 上一次落盘的内容（撤销栈的基准，也是"有没有变化"的判据） */
@@ -134,14 +171,27 @@ struct Editor {
     if (target === null && isValidDateKey(rawDate)) {
       target = this.store.newestOfDate(rawDate);
     }
+    /**
+     * ⚠️ 锁着的胶囊不能当"这天最新的一篇"打开（2026-10-20 实测抓到的 bug）：
+     *    否则用户点「写今天」而今天最新一篇恰好是锁着的胶囊 ⇒ 直接撞上
+     *    build 的守卫页，**一个字都写不了**（守卫挡的是"误入"，不是"日常写作"）。
+     *    带 id 的精确打开仍然放行 —— 那种情况由守卫兜底（双保险）。
+     */
+    if (target !== null && capsuleLocked(target, Date.now())) {
+      target = null;
+    }
     if (target !== null) {
       this.date = target.date;
       this.entryId = target.id;
+      this.applyCapsuleMeta(target);
       this.loadEntry(target.id, ctx);
     } else {
       // 这天还没有任何一篇 ⇒ 新建（先占位 id，写了才会真正落盘）
       this.date = fallbackDate;
       this.entryId = this.store.newEntryId();
+      this.capsuleOn = false;
+      this.capsuleUnlockAt = 0;
+      this.capsuleLockedNow = false;
       this.imgRefs = [];
       this.refreshImagePreviews(ctx);
       this.pendingLines = [];
@@ -156,6 +206,19 @@ struct Editor {
     }
     this.resolveDayList();
     hilog.info(DOMAIN, TAG, 'open note id=%{public}s date=%{public}s', this.entryId, this.date);
+  }
+
+  /**
+   * 把一篇的胶囊状态搬进编辑器状态（aboutToAppear / switchTo 共用）。
+   *
+   * ⚠️ **已锁的胶囊不进编辑器**：走到这里说明是误入（正常应被 Index 拦到
+   *    pages/Capsule）—— 直接返回键挡回去，绝不解密正文。这是封存纪律的
+   *    最后一道 UI 防线（数据层封存 + 路由拦截 + 这里）。
+   */
+  private applyCapsuleMeta(meta: NoteMeta): void {
+    this.capsuleOn = isCapsule(meta);
+    this.capsuleUnlockAt = isCapsule(meta) ? meta.unlockAt : 0;
+    this.capsuleLockedNow = capsuleLocked(meta, Date.now());
   }
 
   /** 把某一篇读进来（同时带上它的心情） */
@@ -211,6 +274,7 @@ struct Editor {
     const target: NoteMeta = this.dayEntries[next];
     const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
     this.entryId = target.id;
+    this.applyCapsuleMeta(target);
     this.loadEntry(target.id, ctx);
     this.resolveDayList();
     this.restore();
@@ -226,6 +290,9 @@ struct Editor {
     this.moodText = '';
     this.favorite = false;
     this.tagsText = '';
+    this.capsuleOn = false;
+    this.capsuleUnlockAt = 0;
+    this.capsuleLockedNow = false;
     this.lines = [];
     this.imgRefs = [];
     this.imgPaths = [];
@@ -235,6 +302,24 @@ struct Editor {
     this.resolveDayList();
     this.restore();
     hilog.info(DOMAIN, TAG, 'add another entry at %{public}s id=%{public}s', this.date, this.entryId);
+  }
+
+  /**
+   * 套用一个日记模板（2026-10-20）：预置行灌进编辑器并立即保存。
+   * ⚠️ 模板只是**开头**，不是表单 —— 用户改哪行删哪行都随他，
+   *    保存路径与手写完全同路（没有任何"模板标记"落盘）。
+   */
+  private applyTemplate(t: JournalTemplate): void {
+    this.pendingLines = t.lines.slice();
+    this.restore();
+    this.words = 0;
+    for (let i: number = 0; i < t.lines.length; i++) {
+      this.words += t.lines[i].length;
+    }
+    this.saved = false;
+    this.scheduleSave();
+    this.templatesOpen = false;
+    hilog.info(DOMAIN, TAG, 'template applied: %{public}s', t.id);
   }
 
   /** 把行文本灌回 RichEditor（块 → 行）—— 必须在 onReady 之后调用 */
@@ -452,10 +537,23 @@ struct Editor {
       }
       return;
     }
-    const ok: boolean = this.store.saveEntry(this.entryId, this.date, withImages, this.mood, this.moodText,
-      this.favorite, parseTags(this.tagsText));
+    // 胶囊：心情/标签在保存路径封存（见 NoteStore.saveEntry 头注）——
+    // 这里一并清空 UI 态，避免"明明选过心情、列表却不显示"的割裂感。
+    const unlockAt: number = this.capsuleOn ? this.capsuleUnlockAt : 0;
+    const sealed: boolean = unlockAt > 0;
+    const saveMood: string = sealed ? '' : this.mood;
+    const saveMoodText: string = sealed ? '' : this.moodText;
+    const saveTags: string[] = sealed ? [] : parseTags(this.tagsText);
+    const ok: boolean = this.store.saveEntry(this.entryId, this.date, withImages, saveMood, saveMoodText,
+      this.favorite, saveTags, unlockAt);
     this.saved = ok;
     this.words = wordCountOf(blocks);
+    if (sealed) {
+      // UI 与存储对齐：胶囊不存心情/标签，界面上也不留着（留着就是"选了却没生效"）
+      this.mood = '';
+      this.moodText = '';
+      this.tagsText = '';
+    }
     if (ok) {
       // 撤销栈：把**上一个版本**推进去（块级快照；本 SDK RichEditor 无 undo API）
       const json: string = blocksToJson(withImages);
@@ -517,6 +615,49 @@ struct Editor {
   }
 
   build() {
+    // 已锁胶囊守卫 vs 编辑器主体：build 只允许一个根节点 ⇒ 分流到两个 @Builder
+    // （正常流程下 Index 会把锁着的胶囊拦到 pages/Capsule，这里是双保险 ——
+    //   万一路由被绕过（深链接/未来入口），也绝不解密、绝不渲染正文）
+    if (this.capsuleLockedNow) {
+      this.lockedGuard();
+    } else {
+      this.editorView();
+    }
+  }
+
+  /** 已锁胶囊的守卫视图（Editor 的双保险，见 build 注释） */
+  @Builder
+  private lockedGuard() {
+    Column() {
+        Text('⏳')
+          .fontSize(48)
+          .margin({ bottom: RJ_SP_LG })
+        Text('这封信还没到打开的日子')
+          .fontSize(RJ_FS_BODY)
+          .fontColor(this.palette.text)
+        Text('到期自动解锁，届时再来')
+          .fontSize(RJ_FS_CAPTION)
+          .fontColor(this.palette.text3)
+          .margin({ top: RJ_SP_SM })
+        Button('返回', { type: ButtonType.Normal, stateEffect: true })
+          .fontSize(RJ_FS_CAPTION)
+          .fontColor(this.palette.text)
+          .backgroundColor(this.palette.card)
+          .borderRadius(RJ_RADIUS_LG)
+          .margin({ top: RJ_SP_XL })
+          .onClick(() => {
+            router.back();
+          })
+      }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Center)
+      .backgroundColor(this.palette.bg)
+  }
+
+  /** 编辑器主体（原 build 的全部内容） */
+  @Builder
+  private editorView() {
     Column() {
       // 头：日期 + 返回
       Row() {
@@ -663,6 +804,10 @@ struct Editor {
           // ⚠️ Select 没有 fontSize 属性（编译实测报 10505001），字号走 Font 的 size
           .font({ size: RJ_FS_CAPTION })
           .fontColor(this.palette.text)
+          // 胶囊态禁用：心情/标签会剧透"信里大概什么内容"，保存路径封存，
+          // 这里直接不让选（UI 与存储对齐，也免得多一层"选了却没生效"的困惑）
+          .enabled(!this.capsuleOn)
+          .opacity(this.capsuleOn ? 0.4 : 1)
           .onSelect((index: number) => {
             this.mood = index === 0 ? '' : MOODS[index - 1].id;
             if (this.mood.length === 0) {
@@ -675,6 +820,8 @@ struct Editor {
           .backgroundColor(this.palette.card)
           .fontColor(this.palette.text)
           .placeholderColor(this.palette.text3)
+          .enabled(!this.capsuleOn)
+          .opacity(this.capsuleOn ? 0.4 : 1)
           // 与左侧心情下拉**等高**（同一行的两个控件不一样高很别扭）；40dp 仍不足 44，
           // 热区用 responseRegion 补
           .height(40)
@@ -689,6 +836,54 @@ struct Editor {
       }
       .width('100%')
       .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_MD })
+
+      /**
+       * 时间胶囊（2026-10-20 同质化整改的核心功能）
+       *
+       * 用户视角：写一封给未来的信 —— 现在锁上，到那天才打得开。
+       * 与"加密"的分工：加密防的是**别人**，胶囊防的是**自己**（提前偷看）。
+       * 一排说清三件事：开关、解锁日、边界（本机系统时间）。
+       */
+      Row() {
+        Toggle({ type: ToggleType.Switch, isOn: this.capsuleOn })
+          .selectedColor(this.palette.brand)
+          .onChange((isOn: boolean) => {
+            this.capsuleOn = isOn;
+            if (isOn && this.capsuleUnlockAt === 0) {
+              // 默认明天零点（earliestUnlock 同口径：当天解锁的胶囊没有意义）
+              this.capsuleUnlockAt = earliestUnlock(Date.now());
+            }
+            this.save();
+          })
+        Text(this.capsuleOn ? '时间胶囊' : '设为时间胶囊')
+          .fontSize(RJ_FS_CAPTION)
+          .fontColor(this.capsuleOn ? this.palette.brand : this.palette.text2)
+          .margin({ left: RJ_SP_MD })
+        Blank()
+        if (this.capsuleOn) {
+          // 解锁日期：点开 DatePicker 对话框（今天不可选，最早明天）
+          Button(unlockDateLabel(this.capsuleUnlockAt), { type: ButtonType.Normal, stateEffect: true })
+            .fontSize(RJ_FS_CAPTION)
+            .fontFamily('monospace')
+            .fontColor(this.palette.text)
+            .backgroundColor(this.palette.card)
+            .borderRadius(RJ_RADIUS_SM)
+            .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_SM, bottom: RJ_SP_SM })
+            .onClick(() => {
+              this.openCapsuleDialog();
+            })
+        }
+      }
+      .width('100%')
+      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_SM })
+      if (this.capsuleOn) {
+        Text('到期前不可读 · 解锁按本机系统时间 · 心情/标签不随胶囊保存')
+          .fontSize(RJ_FS_META)
+          .fontFamily('monospace')
+          .fontColor(this.palette.text3)
+          .width('100%')
+          .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_MD })
+      }
 
       /**
        * 工具栏（富文本：B / I / 列表 / 图片；文档操作：撤销 / 重做 / 保存 / 字数）
@@ -744,6 +939,9 @@ struct Editor {
           .fontColor(this.palette.text)
           .backgroundColor(Color.Transparent)
           .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_SM, bottom: RJ_SP_SM })
+          // 胶囊不配图：缩略图会进索引缓存（imgRef），锁着的信不能留任何视觉线索
+          .enabled(!this.capsuleOn)
+          .opacity(this.capsuleOn ? 0.4 : 1)
           .onClick(() => {
             this.pickImage();
           })
@@ -770,6 +968,41 @@ struct Editor {
       }
       .width('100%')
       .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_XS, bottom: RJ_SP_XS })
+
+      /**
+       * 模板条（2026-10-20）：**只在新篇空正文时出现** ——
+       * 空白页是写日记的最大阻力，给个开头；写起来了就撤，不打扰。
+       * ⚠️ 判据用 words+imgRefs（实时状态）而不是 entryId 是否落盘：
+       *    删光正文的旧篇也该能重新套模板。
+       */
+      if (this.words === 0 && this.imgRefs.length === 0 && !this.capsuleLockedNow) {
+        Row() {
+          Button(this.templatesOpen ? '模板 ▾' : '模板 ▸', { type: ButtonType.Normal, stateEffect: true })
+            .fontSize(RJ_FS_CAPTION)
+            .fontColor(this.templatesOpen ? this.palette.brand : this.palette.text3)
+            .backgroundColor(Color.Transparent)
+            .padding({ left: RJ_SP_SM, right: RJ_SP_MD })
+            .onClick(() => {
+              this.templatesOpen = !this.templatesOpen;
+            })
+          if (this.templatesOpen) {
+            ForEach(TEMPLATES, (t: JournalTemplate) => {
+              Button(t.label, { type: ButtonType.Normal, stateEffect: true })
+                .fontSize(RJ_FS_CAPTION)
+                .fontColor(this.palette.text2)
+                .backgroundColor(this.palette.card)
+                .borderRadius(RJ_RADIUS_SM)
+                .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_XS, bottom: RJ_SP_XS })
+                .margin({ left: RJ_SP_SM })
+                .onClick(() => {
+                  this.applyTemplate(t);
+                })
+            }, (t: JournalTemplate) => t.id)
+          }
+        }
+        .width('100%')
+        .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_XS, bottom: RJ_SP_SM })
+      }
 
       // 正文
       RichEditor(this.options)
@@ -867,4 +1100,17 @@ struct Editor {
 interface EntryParam {
   id?: string;
   date?: string;
+}
+
+/**
+ * 解锁时刻 → 按钮上的日期文案（如 `2027-01-15 解锁`）。
+ *
+ * ⚠️ 模块级函数而不是 build 里的局部 const：ArkTS 的 build/属性链里
+ *    只能写 UI 语法，声明语句写不进去（本文件 2026-10-20 踩过的编译错）。
+ */
+function unlockDateLabel(ts: number): string {
+  if (ts <= 0) {
+    return '选日子';
+  }
+  return dateKeyOf(new Date(ts)) + ' 解锁';
 }

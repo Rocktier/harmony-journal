@@ -1,0 +1,62 @@
+/**
+ * 日记模板（2026-10-20 同质化整改的辅助功能）
+ *
+ * 用户视角：面对空白页发呆是写日记的最大阻力 —— "今天没什么好写的"
+ * 一半是真没什么写，一半是不知道从哪开始。模板给一个开头，
+ * 写不完可以整段删掉（它只是预置文本，没有任何强制）。
+ *
+ * 为什么只有 4 个：模板的价值在**降低启动阻力**，不是做成表单工厂。
+ * 每个都对准一个高频场景，且留足自由书写的空间。
+ */
+
+/** 一个模板：按钮上的名字 + 灌入编辑器的预置行 */
+export interface JournalTemplate {
+  id: string;
+  /** 按钮标签（短，4 个字以内） */
+  label: string;
+  /** 预置的正文行（灌入后用户可改可删） */
+  lines: string[];
+}
+
+export const TEMPLATES: JournalTemplate[] = [
+  {
+    id: 'three-questions',
+    label: '每日三问',
+    lines: [
+      '今天发生了什么：',
+      '感谢什么：',
+      '明天的重点：'
+    ]
+  },
+  {
+    id: 'morning',
+    label: '晨间日记',
+    lines: [
+      '昨晚睡得：',
+      '此刻的状态：',
+      '今天只想做好一件事：'
+    ]
+  },
+  {
+    id: 'travel',
+    label: '旅行手账',
+    lines: [
+      '地点：',
+      '吃了什么：',
+      '想记住的一幕：'
+    ]
+  }
+];
+
+/** 空白模板（显式给一个"什么都不套"的出口，按钮才不会缺一角） */
+export const TEMPLATE_BLANK_ID: string = 'blank';
+
+/** 按 id 找模板；找不到（含 blank）返回 null */
+export function templateById(id: string): JournalTemplate | null {
+  for (let i: number = 0; i < TEMPLATES.length; i++) {
+    if (TEMPLATES[i].id === id) {
+      return TEMPLATES[i];
+    }
+  }
+  return null;
+}

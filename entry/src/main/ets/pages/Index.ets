@@ -9,8 +9,9 @@ import { TimelineDataSource } from '../common/TimelineDataSource';
 import { ImageStore } from '../data/ImageStore';
 import {
   JournalStats, MOODS, MonthCell, Mood, NoteMeta, NoteText, SearchHit, TimelineRow, collectTags,
-  computeStats, filterMetas, moodById, monthGrid, monthOf, monthRowCount,
-  onThisDayDates, previewText, searchNotes, shiftMonth, timeOfDay, timelineRows, todayKey, yearsAgoLabel
+  capsuleBadge, capsuleLocked, computeStats, countsForStats, filterMetas, isCapsule, moodById,
+  monthGrid, monthOf, monthRowCount, onThisDayDates, previewText, searchNotes, shiftMonth, timeOfDay,
+  timelineRows, todayKey, yearsAgoLabel
 } from '../data/NoteMeta';
 import { NoteStore } from '../data/NoteStore';
 import { getStore } from '../data/NoteStoreHolder';
@@ -61,6 +62,37 @@ struct Index {
   /** 运行时色板（深浅切换 = AppStorage 换对象，页面栈不动；见 ThemePalette 头注） */
   @StorageLink('palette') palette: ThemePalette = new ThemePalette(false);
   @State private metas: NoteMeta[] = [];
+  /**
+   * 日期 → 当天总字数（月历热力色阶的数据源）。
+   *
+   * ⚠️ 为什么必须是 @State 而不是 cells() 里现算：ArkUI 的 `ForEach` 按 **key**
+   *    判定"这一项变没变"（我们用的是 `cell.date`）。保存一篇新日记后，那天格子的
+   *    key 和保存前一模一样 ⇒ ForEach 认为该项未变、**不重新执行 item builder**，
+   *    于是闭包里那个旧的 `cell.words` 原样留着 —— 表现就是"保存完日历不染色，
+   *    切到时光再切回来（组件重建）才正常"（2026-10-20 华为审核实测报的同一个 bug）。
+   *    把数据源提成 @State，builder 里读 `this.heatByDate[...]` 才会建立响应依赖，
+   *    reload 时换个新对象即触发重渲染 —— 这是正解；比"key 里塞版本号强制全量重建"
+   *    干净（那个方案会白重建 42 个格子）。
+   */
+  @State private heatByDate: Record<string, number> = {};
+  /**
+   * 已收藏的 id 集合（与 heatByDate 同一个理由提成 @State）
+   *
+   * ⚠️ 收藏星在时光轴行里，而 LazyForEach 按 key（`n:`+id）判定要不要重建 item ——
+   *    翻转收藏后 key 不变 ⇒ itemGenerator 不重新执行 ⇒ 星还是原来那颗。
+   *    实测踩到（2026-10-20 修完第一个 bug 后当场抓到，日志里 toggleFavorite
+   *    已经成功、界面却没反应）。builder 里读 `this.favIds.has(...)` 才能建立
+   *    响应依赖，reload 换个新 Set 即重渲染。
+   */
+  @State private favIds: Set<string> = new Set<string>();
+  /** 有日记的日期（与 heatByDate 同批更新）—— 判"这天写没写过"用它，见 wordsOf */
+  @State private markedDates: string[] = [];
+  /**
+   * 有**时间胶囊**的日期（月历锁点用，与 heatByDate 同批更新）。
+   * 只存"这天有胶囊"，不存锁没锁 —— 锁点表达的是"这有天写的信"，
+   * 到期后锁点自然消失（reload 时按当前时间重算）。
+   */
+  @State private capsuleDates: string[] = [];
   @State private mode: string = 'month';
   @State private monthKey: string = monthOf(todayKey());
   @State private query: string = '';
@@ -134,9 +166,38 @@ struct Index {
 
   private reload(): void {
     this.metas = this.store.list();
+    const nowMs: number = Date.now();
+    // 热力数据源必须与 metas 同批更新（换新对象才会触发依赖它的 Grid 重渲染）
+    const heat: Record<string, number> = {};
+    const marked: string[] = [];
+    const capsule: string[] = [];
+    for (let i: number = 0; i < this.metas.length; i++) {
+      const d: string = this.metas[i].date;
+      // 未到期胶囊不计入热度（从格子颜色深浅能反推信写了多长 —— 封存纪律的统计侧对应物）
+      if (countsForStats(this.metas[i], nowMs)) {
+        heat[d] = (heat[d] !== undefined ? heat[d] : 0) + this.metas[i].words;
+      }
+      if (!marked.includes(d)) {
+        marked.push(d);
+      }
+      if (capsuleLocked(this.metas[i], nowMs) && !capsule.includes(d)) {
+        capsule.push(d);
+      }
+    }
+    this.heatByDate = heat;
+    this.markedDates = marked;
+    this.capsuleDates = capsule;
+    // 收藏集合同批更新（新 Set ⇒ 依赖它的时光轴收藏星才会重渲染）
+    const fav: Set<string> = new Set<string>();
+    for (let i: number = 0; i < this.metas.length; i++) {
+      if (this.metas[i].favorite) {
+        fav.add(this.metas[i].id);
+      }
+    }
+    this.favIds = fav;
     this.loaded = true;
     this.allTags = collectTags(this.metas);
-    this.stats = computeStats(this.metas, todayKey());
+    this.stats = computeStats(this.metas, todayKey(), nowMs);
     this.refreshData();
     this.buildRecall();
     hilog.info(DOMAIN, TAG, 'index loaded: %{public}d notes, recall %{public}d', this.metas.length, this.recall.length);
@@ -145,7 +206,10 @@ struct Index {
   /** 把筛选后的结果灌进时间轴（换数据必须走 reload，否则 LazyForEach 不重画） */
   private refreshData(): void {
     const shown: NoteMeta[] = filterMetas(this.metas, this.onlyFavorite, this.filterMood, this.filterTag);
-    this.dataSource.reload(timelineRows(shown));
+    // nowMs 必须传：胶囊行的 key 带锁定/倒计时标签（见 noteRowKey）——
+    // 普通日记设为胶囊后 key 会变，LazyForEach 才会重建那一行
+    // （2026-10-21 实测：不传的话列表继续剧透胶囊的前 42 字摘要）
+    this.dataSource.reload(timelineRows(shown, Date.now()));
     hilog.info(DOMAIN, TAG, 'refreshData: metas=%{public}d shown=%{public}d rows=%{public}d fav=%{public}s mood=[%{public}s]',
       this.metas.length, shown.length, this.dataSource.totalCount(),
       this.onlyFavorite ? 'y' : 'n', this.filterMood);
@@ -176,12 +240,18 @@ struct Index {
   /** 「那年今日」：把往年同日的日记预先算成卡片（渲染时零 IO） */
   private buildRecall(): void {
     const today: string = todayKey();
+    const nowMs: number = Date.now();
     const dates: string[] = onThisDayDates(this.store.allDates(), today);
     const cards: RecallCard[] = [];
     for (let i: number = 0; i < dates.length && cards.length < RECALL_MAX; i++) {
       const list: NoteMeta[] = this.store.entriesOfDate(dates[i]);
       for (let j: number = 0; j < list.length && cards.length < RECALL_MAX; j++) {
         const m: NoteMeta = list[j];
+        // 未到期胶囊不进「那年今日」：这一栏的看点就是摘要，而胶囊的摘要
+        // 不允许被任何人（包括明年的自己）提前看到（封存纪律，与搜索同理）
+        if (capsuleLocked(m, nowMs)) {
+          continue;
+        }
         // 老数据没缓存摘要 ⇒ 解密补一次（上限 RECALL_MAX 条，成本封顶）
         const text: string = m.preview.length > 0 ? m.preview : previewText(this.store.textOf(m.id), RECALL_PREVIEW_LEN);
         const card: RecallCard = { meta: m, years: yearsAgoLabel(m.date, today), preview: text };
@@ -222,12 +292,24 @@ struct Index {
     // 第三参 today：月历上"今天"必须被认出来（第一性原则 —— 日记 app 的一切围绕今天，
     // 而原来今天和其他 30 个格子长得一模一样，用户每天第一眼找不到"今天"）。
     // 第四参 wordsMap：当天总字数 ⇒ 格子茶褐色阶（Booka/GitHub 贡献图模式：深浅=当天量）。
-    const wordsMap: Record<string, number> = {};
-    for (let i: number = 0; i < this.metas.length; i++) {
-      const d: string = this.metas[i].date;
-      wordsMap[d] = (wordsMap[d] !== undefined ? wordsMap[d] : 0) + this.metas[i].words;
+    return monthGrid(this.monthKey, this.store.allDates(), todayKey(), this.heatByDate).slice(0, this.calRows() * 7);
+  }
+
+  /**
+   * 这天写了多少字；`-1` = 这天没有日记（热力色阶与字色共用）。
+   *
+   * ⚠️ 不能用 `Object.prototype.hasOwnProperty.call(...)` 判 key 在不在 ——
+   *    ArkTS 禁 Function.apply/call 与 prototype 赋值（arkts-no-func-apply-call），
+   *    编译直接报错。改用并行的日期数组（markedDates）判存在，语义也更直白。
+   * ⚠️ `0` = 这天只有未到期的胶囊（有日记但不计热度）⇒ 色阶走透明，
+   *    由锁点单独表达 —— 颜色深浅=字数是会泄密的（见 reload 的 countsForStats）。
+   */
+  private wordsOf(date: string): number {
+    if (!this.markedDates.includes(date)) {
+      return -1;
     }
-    return monthGrid(this.monthKey, this.store.allDates(), todayKey(), wordsMap).slice(0, this.calRows() * 7);
+    const w: number = this.heatByDate[date];
+    return w === undefined ? 0 : w;
   }
 
   /**
@@ -235,18 +317,23 @@ struct Index {
    * 茶褐色阶 4 档（全 app 唯一彩色家族）：1-99 淡 / 100-399 中淡 / 400-799 中深 / 800+ 深。
    * 阈值取"努力看得见但不制造焦虑"：80 字一小段也有一格淡印（写了就算），
    * 800+ 长文才拿最深（和 brand 同色，那是"重度倾诉"的一天）。
+   *
+   * ⚠️ 读的是 `this.heatByDate` 而不是 `cell.words` —— 后者是闭包里的旧对象，
+   *    ForEach 不重建就拿它没法刷新（保存日记不染色的根因，见 heatByDate 注释）。
    */
   private heatFill(cell: MonthCell): ResourceColor {
-    if (!cell.hasNote) {
+    const w: number = this.wordsOf(cell.date);
+    // -1 = 没日记；0 = 纯胶囊日（无色阶，只给锁点 —— 防从颜色反推信的长短）
+    if (w <= 0) {
       return Color.Transparent;
     }
-    if (cell.words >= 800) {
+    if (w >= 800) {
       return this.palette.heat4;
     }
-    if (cell.words >= 400) {
+    if (w >= 400) {
       return this.palette.heat3;
     }
-    if (cell.words >= 100) {
+    if (w >= 100) {
       return this.palette.heat2;
     }
     return this.palette.heat1;
@@ -254,7 +341,7 @@ struct Index {
 
   /** 热度字色：深底（400+ 的 3/4 档）纸白字、其余墨字；对比度全部 ≥ 4.5:1 */
   private heatText(cell: MonthCell): ResourceColor {
-    if (cell.hasNote && cell.words >= 400) {
+    if (this.wordsOf(cell.date) >= 400) {
       return this.palette.bg;
     }
     return cell.inMonth ? this.palette.text : this.palette.text3;
@@ -295,7 +382,7 @@ struct Index {
         inMonth.push(this.metas[i]);
       }
     }
-    const rows: TimelineRow[] = timelineRows(inMonth);
+    const rows: TimelineRow[] = timelineRows(inMonth, Date.now());
     const notes: TimelineRow[] = [];
     for (let i: number = 0; i < rows.length; i++) {
       if (rows[i].kind === 'note') {
@@ -305,18 +392,54 @@ struct Index {
     return notes;
   }
 
-  /** 打开一篇：`id` 有值就精确打开那篇（搜索结果），否则交给编辑器按 date 取这天最新的一篇 */
+  /**
+   * 打开一篇：`id` 有值就精确打开那篇（搜索结果），否则交给编辑器按 date 取这天最新的一篇
+   *
+   * ⚠️ 时间胶囊路由拦截（2026-10-20）：**未到期的胶囊不进编辑器** ——
+   *    编辑器整页"可编辑"的暗示会让人以为锁坏了，且多一分误触泄密的面。
+   *    统一先去 pages/Capsule（只读详情：倒计时 + 解锁日）；到期的正常进编辑器。
+   */
   private open(date: string, id: string = ''): void {
+    if (id.length > 0) {
+      const m: NoteMeta | null = this.store.byId(id);
+      if (m !== null && capsuleLocked(m, Date.now())) {
+        router.pushUrl({ url: 'pages/Capsule', params: { id: id } }).catch((e: Error) => {
+          hilog.error(DOMAIN, TAG, 'pushUrl Capsule failed: %{public}s', JSON.stringify(e));
+        });
+        return;
+      }
+    }
     const payload: EntryParamPayload = { date: date, id: id };
     router.pushUrl({ url: 'pages/Editor', params: payload }).catch((e: Error) => {
       hilog.error(DOMAIN, TAG, 'pushUrl failed: %{public}s', JSON.stringify(e));
     });
   }
 
+  /**
+   * 时光轴行内的收藏切换（2026-10-20 修华为审核实测 bug：列表里点 ★ 没反应）。
+   *
+   * 只翻索引里的 `favorite` 位、不重写正文密文 —— 收藏是索引级元数据，
+   * 解密+重加密整篇正文只为改一个布尔值，纯属浪费（且多一次 IO 失败面）。
+   * 改完必须 reload：`NoteMeta` 不是 @Observed，属性变了不会自己重渲染。
+   */
+  private toggleFavorite(id: string): void {
+    const ok: boolean = this.store.toggleFavorite(id);
+    if (!ok) {
+      hilog.error(DOMAIN, TAG, 'toggleFavorite failed: %{public}s', id);
+      return;
+    }
+    this.reload();
+  }
+
   private runSearch(): void {
+    const nowMs: number = Date.now();
     const texts: NoteText[] = [];
     for (let i: number = 0; i < this.metas.length; i++) {
       const m: NoteMeta = this.metas[i];
+      // 未到期的胶囊不进搜索 —— 命中片段的 snippet 会剧透内容（封存纪律的搜索侧对应物）
+      if (capsuleLocked(m, nowMs)) {
+        continue;
+      }
       const item: NoteText = {
         id: m.id,
         date: m.date,
@@ -692,6 +815,15 @@ struct Index {
                     color: cell.isToday ? this.palette.accent : Color.Transparent,
                     radius: RJ_RADIUS_SM
                   })
+                // 时间胶囊锁点（2026-10-20）：这天有一封还没到期的信。
+                // ⚠️ 读 @State 的 capsuleDates 而不是 cell 上的字段 —— 与热度同源的
+                //    ForEach 不重建坑（见 heatByDate 头注）；且占位固定高度，
+                //    没有胶囊的日子用同高度透明文本占位，数字不下沉。
+                Text(this.capsuleDates.includes(cell.date) ? '⏳' : ' ')
+                  .fontSize(RJ_FS_META)
+                  .fontColor(this.palette.brand)
+                  .width('100%')
+                  .textAlign(TextAlign.Center)
               }
               .justifyContent(FlexAlign.Center)
               .width('100%')
@@ -734,73 +866,14 @@ struct Index {
                   .width('100%')
                   .padding({ top: RJ_SP_XL, bottom: RJ_SP_MD })
               } else if (row.meta !== null) {
-                Row() {
-                  Column() {
-                    Row() {
-                      Text(row.meta.date)
-                        .fontSize(RJ_FS_CAPTION)
-                        .fontFamily('monospace')
-                        .fontColor(this.palette.text2)
-                      // 同一天多篇时补个时间，否则几行日期一模一样、看不出是几篇
-                      if (row.showTime) {
-                        Text(timeOfDay(row.meta.createdAt))
-                          .fontSize(RJ_FS_META)
-                          .fontFamily('monospace')
-                          .fontColor(this.palette.text3)
-                          .margin({ left: RJ_SP_MD })
-                      }
-                      if (this.moodEmoji(row.meta).length > 0) {
-                        Text(this.moodEmoji(row.meta))
-                          .fontSize(RJ_FS_CALLOUT)
-                          .margin({ left: RJ_SP_MD })
-                      }
-                      if (row.meta.favorite) {
-                        Text('★')
-                          .fontSize(RJ_FS_CALLOUT)
-                          // 收藏 = 钤印 ⇒ 品牌茶褐（与月视图 ★、Editor 收藏星、日历日期点四处同色）
-                          .fontColor(this.palette.brand)
-                          .margin({ left: RJ_SP_MD })
-                      }
-                      Blank()
-                      Text(row.meta.words + ' 字')
-                        .fontSize(RJ_FS_META)
-                        .fontFamily('monospace')
-                        .fontColor(this.palette.text3)
-                    }
-                    .width('100%')
-                    if (row.meta.tags.length > 0) {
-                      Text('#' + row.meta.tags.join(' #'))
-                        .fontSize(RJ_FS_META)
-                        .fontFamily('monospace')
-                        .fontColor(this.palette.text3)
-                        .margin({ top: RJ_SP_SM })
-                    }
-                    // 摘要来自索引缓存（零额外 IO）；老数据没有 ⇒ 这一行就没有，不硬凑。
-                    // serif = 纸上阅读的笔画语言（党哥 2026-10-15：读的界面要纸质书信质感）
-                    if (row.meta.preview.length > 0) {
-                      Text(row.meta.preview)
-                        .fontSize(RJ_FS_CALLOUT)
-                        .fontFamily('serif')
-                        .fontColor(this.palette.text)
-                        .margin({ top: RJ_SP_SM })
-                        .maxLines(2)
-                        .textOverflow({ overflow: TextOverflow.Ellipsis })
-                    }
-                  }
-                  .alignItems(HorizontalAlign.Start)
-                  .layoutWeight(1)
-                  // 二次调用走缓存，很便宜；这里多判一次是为了解密失败时不留空白方块
-                  if (row.meta.imgRef.length > 0 && this.thumbOf(row.meta).length > 0) {
-                    Image(this.thumbOf(row.meta))
-                      .width(48)
-                      .height(48)
-                      .objectFit(ImageFit.Cover)
-                      .borderRadius(RJ_RADIUS_SM)
-                      .margin({ left: RJ_SP_LG })
-                  }
-                }
-                .width('100%')
-                .padding({ top: RJ_SP_LG, bottom: RJ_SP_LG })
+                // ⚠️ 为什么日记行要抽成 @Builder 还多传一个 meta（2026-10-20 编译踩坑）：
+                //   ① itemGenerator 的函数体**只能写 UI 组件**，塞一句
+                //      `const meta = row.meta` 直接报 "Only UI component syntax can be written here"；
+                //   ② 而收藏按钮的 onClick 闭包里，ArkTS 对 `row.meta` 的 null 收窄会失效
+                //      （报 'row.meta' is possibly 'null'）。
+                //   解法：让收窄在**调用点**生效 —— `row.meta` 作实参传进 @Builder，
+                //   形参声明为非空 `NoteMeta`，整行都基于它渲染，闭包里也能安全用。
+                this.noteRow(row, row.meta);
               }
             }
             .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL })
@@ -840,5 +913,119 @@ struct Index {
           }
         })
     )
+  }
+
+  /**
+   * 时光轴的一行日记（2026-10-20 从 build 内联抽成 @Builder）
+   *
+   * 抽出来的原因见 LazyForEach 里的注释：itemGenerator 不能写语句声明，
+   * 而收藏按钮的 onClick 需要非空 meta —— 把 row.meta 作实参传进来，
+   * 形参声明非空，整行（含闭包）都基于它。
+   *
+   * `row` 只为 showTime 保留（同日多篇才补 HH:mm）。
+   */
+  @Builder
+  private noteRow(row: TimelineRow, meta: NoteMeta) {
+    Row() {
+      Column() {
+        Row() {
+          Text(meta.date)
+            .fontSize(RJ_FS_CAPTION)
+            .fontFamily('monospace')
+            .fontColor(this.palette.text2)
+          // 同一天多篇时补个时间，否则几行日期一模一样、看不出是几篇
+          if (row.showTime) {
+            Text(timeOfDay(meta.createdAt))
+              .fontSize(RJ_FS_META)
+              .fontFamily('monospace')
+              .fontColor(this.palette.text3)
+              .margin({ left: RJ_SP_MD })
+          }
+          if (this.moodEmoji(meta).length > 0) {
+            Text(this.moodEmoji(meta))
+              .fontSize(RJ_FS_CALLOUT)
+              .margin({ left: RJ_SP_MD })
+          }
+          /**
+           * 收藏星（2026-10-20 从"只读展示"改为**可直接点**）
+           *
+           * ⚠️ 原来只有收藏后才渲染一个 ★、且不带点击 —— 华为审核实测报：
+           *    「首页-时光-收藏：点击收藏图标未高亮显示」。用户看到列表里的 ★
+           *    理所当然认为能点，点了没反应 = 功能坏了。
+           * 现在未收藏显示空心 ☆（可点）、收藏显示实心 ★（茶褐），
+           * 点一下就地切换并重载 —— 不必再进编辑器（编辑器那颗星保留，
+           * 写的时候顺手标）。
+           * 收藏 = 钤印 ⇒ 品牌茶褐（与月视图 ★、Editor 收藏星、日历日期点四处同色）
+           *
+           * ⚠️ 读 `this.favIds.has(...)` 而不是 `meta.favorite`：后者是闭包里的
+           *    旧对象，LazyForEach 不重建 item 就拿它没法刷新（与日历染色同源的坑）。
+           */
+          Button(this.favIds.has(meta.id) ? '★' : '☆', { type: ButtonType.Normal, stateEffect: true })
+            .fontSize(RJ_FS_CALLOUT)
+            .fontColor(this.favIds.has(meta.id) ? this.palette.brand : this.palette.text3)
+            .backgroundColor(Color.Transparent)
+            .padding(0)
+            .margin({ left: RJ_SP_MD })
+            .accessibilityText(this.favIds.has(meta.id) ? '取消收藏' : '收藏这一篇')
+            .onClick(() => {
+              this.toggleFavorite(meta.id);
+            })
+          /**
+           * 时间胶囊徽标（2026-10-20）：锁定态显示倒计时，已解锁显示角标。
+           * 位置在收藏星之后 —— 与 ★ 同属"这篇的状态"，且都是行内小字。
+           */
+          if (isCapsule(meta)) {
+            Text(capsuleBadge(meta, Date.now()))
+              .fontSize(RJ_FS_META)
+              .fontFamily('monospace')
+              .fontColor(this.palette.brand)
+              .margin({ left: RJ_SP_MD })
+          }
+          Blank()
+          /**
+           * 字数：锁定态胶囊**不显示** —— 数字大小会剧透"信写了多长"
+           * （封存纪律在列表侧的对应物；保存路径 preview 等字段同理全空）。
+           */
+          if (!capsuleLocked(meta, Date.now())) {
+            Text(meta.words + ' 字')
+              .fontSize(RJ_FS_META)
+              .fontFamily('monospace')
+              .fontColor(this.palette.text3)
+          }
+        }
+        .width('100%')
+        if (meta.tags.length > 0) {
+          Text('#' + meta.tags.join(' #'))
+            .fontSize(RJ_FS_META)
+            .fontFamily('monospace')
+            .fontColor(this.palette.text3)
+            .margin({ top: RJ_SP_SM })
+        }
+        // 摘要来自索引缓存（零额外 IO）；老数据没有 ⇒ 这一行就没有，不硬凑。
+        // serif = 纸上阅读的笔画语言（党哥 2026-10-15：读的界面要纸质书信质感）
+        if (meta.preview.length > 0) {
+          Text(meta.preview)
+            .fontSize(RJ_FS_CALLOUT)
+            .fontFamily('serif')
+            .fontColor(this.palette.text)
+            .margin({ top: RJ_SP_SM })
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+      // 二次调用走缓存，很便宜；这里多判一次是为了解密失败时不留空白方块
+      if (meta.imgRef.length > 0 && this.thumbOf(meta).length > 0) {
+        Image(this.thumbOf(meta))
+          .width(48)
+          .height(48)
+          .objectFit(ImageFit.Cover)
+          .borderRadius(RJ_RADIUS_SM)
+          .margin({ left: RJ_SP_LG })
+      }
+    }
+    .width('100%')
+    .padding({ top: RJ_SP_LG, bottom: RJ_SP_LG })
   }
 }

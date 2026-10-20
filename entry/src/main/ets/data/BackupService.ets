@@ -182,6 +182,9 @@ export function parseBackup(plain: Uint8Array): BackupItem[] {
     // v1 条目没有 id ⇒ 兜底成 date（导入侧再做冲突处理，这里只保证字段齐全）
     let id: string = src !== undefined && typeof src.id === 'string' && isValidNoteId(src.id) ? src.id : it.date;
     const updatedAt: number = src !== undefined && typeof src.updatedAt === 'number' ? src.updatedAt : 0;
+    // 老备份（1.0.1 及以前）的 meta 没有 unlockAt ⇒ undefined ⇒ 当普通日记恢复
+    const unlockAt: number = src !== undefined && typeof src.unlockAt === 'number' && src.unlockAt > 0
+      ? src.unlockAt : 0;
     const meta: NoteMeta = {
       id: id,
       date: it.date,
@@ -194,7 +197,8 @@ export function parseBackup(plain: Uint8Array): BackupItem[] {
       hasImage: src !== undefined && src.hasImage === true,
       imgRef: src !== undefined && typeof src.imgRef === 'string' ? src.imgRef : '',
       favorite: src !== undefined && src.favorite === true,
-      tags: sanitizeTags(src !== undefined ? src.tags : undefined)
+      tags: sanitizeTags(src !== undefined ? src.tags : undefined),
+      unlockAt: unlockAt
     };
     const kept: BackupItem = {
       date: it.date,
