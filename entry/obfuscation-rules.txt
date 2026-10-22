@@ -5,40 +5,28 @@
 -enable-filename-obfuscation
 -enable-export-obfuscation
 
-# ── P1-8 序列化字段白名单（2026-10-22 补）────────────────────────────
-# 落盘 JSON（索引 index.json / 单篇日记 blocks / 加密备份）全部是
-# JSON.stringify(holder) → 字段名写进文件。属性混淆会同步重命名
-# interface 与对象字面量的属性名：同版本自洽，但**跨版本混淆名会变** ——
-# 旧版写盘的字段名（如 mfa）新版按新名读不到，用户的日记元数据会静默清空。
-# 白名单把这些字段名钉死为明文，「十年可读」承诺才成立。
+# ── 序列化字段保护（P1-8，2026-10-22 反汇编实证后定稿）─────────────────
+# 落盘 JSON（索引 / 单篇日记 blocks / 加密备份）全部走 JSON.stringify(holder)
+# ⇒ 属性名被写进文件，跨版本改名就会读不回来。
 #
-# ⚠️ 待模拟器验证（2026-10-22 记）：已上架的 1.0.2 是否已带混淆名写盘 ——
-#    拉一份真实 index.json 看字段名即可判定。若已是混淆名，下个版本
-#    必须附带「旧混淆名 → 明文名」迁移映射，否则升级即丢元数据。
--keep-property-whitelist
-  app
-  v
-  items
-  id
-  date
-  createdAt
-  mood
-  moodText
-  preview
-  updatedAt
-  words
-  hasImage
-  imgRef
-  favorite
-  tags
-  unlockAt
-  blocks
-  type
-  spans
-  ref
-  text
-  fontWeight
-  fontStyle
-  bold
-  italic
-  meta
+# 【实证过程】release abc 反汇编（ark_disasm）：
+#   四条开关全开时，NoteMeta 的对象字面量键为
+#     [id, date, m5, mood, moodText, preview, l5, words, hasImage, n5,
+#      favorite, tags, unlockAt]
+#   即 createdAt→m5、updatedAt→l5、imgRef→n5；**只开其中任一条都不改名**
+#   （单独 property 混淆 → 全明文；单独 toplevel 混淆 → 全明文）。
+#   ⇒ 是多条开关联合作用的产物，单一 -keep-property-whitelist 拦不住
+#      （实测：写了 26 个字段名的白名单，产物与不写逐字相同）。
+#
+# 【本版方案】文件级 -keep 保住三个序列化真源文件 ⇒ 字段名全部回到明文。
+#   代价：这几个文件里的标识符不参与混淆（体积影响可忽略：三个文件不到 10KB）。
+-keep
+./src/main/ets/data/IndexCodec.ets
+./src/main/ets/data/NoteBlocks.ets
+./src/main/ets/data/BackupService.ets
+
+# ⚠️ 存量：已上架的 1.0.2 就是用 m5/l5/n5 写盘的。本版 -keep 只保证"以后写明文"，
+#    读旧数据靠 IndexCodec 的 fallback 链（明文优先，m5/l5/n5 兜底）。
+#    若将来这三个文件被合并/改名，本条 -keep 必须同步改，否则保护失效。
+# ⚠️ 格式坑：-keep / -keep-property-whitelist 的条目都**不能缩进**，
+#    带前导空格的行不会被解析（实测白名单等于没写）。

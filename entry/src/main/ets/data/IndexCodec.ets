@@ -113,14 +113,24 @@ export function normalizeEntries(raw: NoteMeta[], legacy: boolean): NoteMeta[] {
       id = rehash(id, seen);
     }
     seen.add(id);
-    const updatedAt: number = typeof it.updatedAt === 'number' ? it.updatedAt : 0;
+    // ── 旧混淆名迁移（P1-8，2026-10-22）：明文优先，1.0.2 的 m5/l5/n5 兜底 ──
+    // 1.0.2 的 release 把这三个字段名混淆后写进了盘（全 App 唯一受影响的三项）。
+    // 明文名读不到时再认旧名：用户升级上来，时间戳与图片引用才不会凭空消失。
+    const updatedAt: number = typeof it.updatedAt === 'number'
+      ? it.updatedAt
+      : (typeof it.l5 === 'number' ? it.l5 : 0);
+    const imgRef: string = typeof it.imgRef === 'string'
+      ? it.imgRef
+      : (typeof it.n5 === 'string' ? it.n5 : '');
     /**
      * ⚠️ 这里必须判 `> 0`，不能只判"是不是数字"：
      * `typeof 0 === 'number'` 成立，于是 `createdAt: 0` 会被当成有效值保留，
      * 结果是时间轴里老条目**不显示 HH:mm**（`timeOfDay(0)` 返回空串）——
      * 真机实拍发现的观感缺陷。0 不是有效时间戳，一律退回 `updatedAt`。
      */
-    const rawCreated: number = typeof it.createdAt === 'number' ? it.createdAt : 0;
+    const rawCreated: number = typeof it.createdAt === 'number'
+      ? it.createdAt
+      : (typeof it.m5 === 'number' ? it.m5 : 0);
     const entry: NoteMeta = {
       id: id,
       date: it.date,
@@ -131,7 +141,7 @@ export function normalizeEntries(raw: NoteMeta[], legacy: boolean): NoteMeta[] {
       updatedAt: updatedAt,
       words: typeof it.words === 'number' ? it.words : 0,
       hasImage: it.hasImage === true,
-      imgRef: typeof it.imgRef === 'string' ? it.imgRef : '',
+      imgRef: imgRef,
       favorite: it.favorite === true,
       tags: sanitizeTags(it.tags),
       // 老索引（1.0.1 及以前）没有 unlockAt ⇒ 按普通日记处理（0）。

@@ -90,6 +90,26 @@ export interface NoteMeta {
    * ⚠️ 老数据没有这个字段 ⇒ 解析时按 0 处理（IndexCodec.normalizeEntries）。
    */
   unlockAt: number;
+  // ─────────────────────────────────────────────────────────────────────
+  // 下面三个是**旧 release 混淆名**，不是新字段（2026-10-22 反汇编实证）
+  //
+  // 起因：1.0.2 的 release 包开了四条混淆（property/toplevel/filename/export），
+  // 联合作用把 NoteMeta 的三个属性名改掉了 —— release abc 里对象字面量的键
+  // 实测为 [id, date, **m5**, mood, moodText, preview, **l5**, words, hasImage,
+  //        **n5**, favorite, tags, unlockAt]
+  // 即 createdAt→m5、updatedAt→l5、imgRef→n5，**并写进了用户的索引文件**。
+  // 本版本已用文件级 `-keep` 保住明文字段名（见 obfuscation-rules.txt），
+  // 但存量数据里那三个键仍叫 m5/l5/n5 ⇒ 读端必须两个名字都认。
+  //
+  // ⚠️ 全部 optional：新版构造 NoteMeta 时不给值 ⇒ JSON.stringify 不输出，
+  //    新落盘的索引里干干净净，只有明文名。
+  // ⚠️ 若将来混淆名再变，这三个 fallback 会自然失效（但有 0/空串兜底，不会崩）。
+  /** 1.0.2 写盘的 createdAt（混淆名 m5） */
+  m5?: number;
+  /** 1.0.2 写盘的 updatedAt（混淆名 l5） */
+  l5?: number;
+  /** 1.0.2 写盘的 imgRef（混淆名 n5） */
+  n5?: string;
 }
 
 /**

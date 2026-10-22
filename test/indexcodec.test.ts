@@ -185,3 +185,50 @@ test('normalizeEntries：同一天多篇都能留下（这是 N2 的核心保证
   ], false);
   assert.equal(got.length, 2);
 });
+
+/**
+ * ★ 迁移：1.0.2 release 混淆名（createdAt→m5 / updatedAt→l5 / imgRef→n5）
+ *
+ * 实证（2026-10-22 反汇编 release abc）：四条混淆开关联合作用会改对象字面量的键名，
+ * 1.0.2 就是这样把索引写进盘的。用户升级到新版本（已 -keep 保住明文名）时，
+ * 如果读端不认旧名，时间戳与图片引用会凭空消失 —— 这是会丢用户数据的级别。
+ */
+test('★ 迁移：1.0.2 混淆名（m5/l5/n5）写的索引必须能读回明文', () => {
+  const obfuscated: string = JSON.stringify({
+    app: INDEX_APP, v: INDEX_VERSION,
+    items: [{
+      id: 'a1', date: '2026-10-02',
+      m5: 1700000000000, l5: 1700000060000, n5: 'img/p1.enc',
+      words: 42, hasImage: true
+    }]
+  });
+  const got: NoteMeta[] = parseIndex(obfuscated);
+  assert.equal(got.length, 1, '整条不能因为字段名变了就被跳过');
+  assert.equal(got[0].createdAt, 1700000000000);
+  assert.equal(got[0].updatedAt, 1700000060000);
+  assert.equal(got[0].imgRef, 'img/p1.enc');
+  assert.equal(got[0].words, 42);
+});
+
+test('★ 迁移：明文优先，旧名只作兜底（两条路都在时以明文为准）', () => {
+  const both: string = JSON.stringify({
+    app: INDEX_APP, v: INDEX_VERSION,
+    items: [{
+      id: 'a2', date: '2026-10-03',
+      createdAt: 111, m5: 999, updatedAt: 222, l5: 888, imgRef: 'img/new.enc', n5: 'img/old.enc'
+    }]
+  });
+  const got: NoteMeta[] = parseIndex(both);
+  assert.equal(got[0].createdAt, 111);
+  assert.equal(got[0].updatedAt, 222);
+  assert.equal(got[0].imgRef, 'img/new.enc');
+});
+
+test('★ 迁移：新写的索引里不许再出现旧混淆名（污染控制）', () => {
+  const json: string = encodeIndex([entry('2026-10-04', 'a3', { imgRef: 'img/x.enc' })]);
+  assert.equal(json.indexOf('m5') < 0, true, '新数据不写旧名');
+  assert.equal(json.indexOf('l5') < 0, true);
+  assert.equal(json.indexOf('n5') < 0, true);
+  assert.equal(json.indexOf('createdAt') >= 0, true, '新数据必须写明文名');
+  assert.equal(json.indexOf('imgRef') >= 0, true);
+});
