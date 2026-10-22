@@ -8,6 +8,7 @@ import {
   searchNotes, shiftMonth, tagsToText, timeOfDay, timelineRows, todayKey, yearsAgoLabel
 } from '../entry/src/main/ets/data/NoteMeta';
 import { popSnapshot, pushSnapshot } from '../entry/src/main/ets/data/NoteBlocks';
+import { backupFileName } from '../entry/src/main/ets/data/BackupService';
 
 /** 造条目（只关心被测字段，其余走默认） */
 function entry(date: string, id: string, createdAt: number = 1): NoteMeta {
@@ -28,6 +29,29 @@ test('日期键：补零、今天、合法校验', () => {
   assert.equal(isValidDateKey('2026-02-30'), false);   // 2 月没有 30 号
   assert.equal(isValidDateKey('2026-13-01'), false);
   assert.equal(isValidDateKey('不是日期'), false);
+});
+
+/**
+ * dateKeyOf 必须是**本地时区**的日期，不能是 UTC。
+ * 东八区 00:00~08:00 时 UTC 还是前一天：备份/导出的文件名若按 UTC 取日期，
+ * 凌晨导出的文件会被写成昨天（2026-10-23 凌晨实测：文件名显示 2026-10-22）。
+ * 这条测试守的是「getTimezoneOffset 参与计算」这件事本身。
+ */
+test('日期键用本地时区日期，不是 UTC（凌晨导出文件名不写成昨天）', () => {
+  // 2026-10-23 00:30 本地时间 = ISO 里 UTC 的 2026-10-22T16:30
+  const d = new Date('2026-10-22T16:30:00Z');
+  const utcKey = d.toISOString().substring(0, 10);      // '2026-10-22'（UTC 视角）
+  const localKey = dateKeyOf(d);
+  // 测试机在东八区时：本地应是 10-23，与 UTC 差一天 ⇒ 证明二者确实不同
+  if (d.getTimezoneOffset() <= -480) {                 // UTC+8 及更东
+    assert.equal(localKey, '2026-10-23', '本地时区必须算到 23 日');
+    assert.notEqual(localKey, utcKey);
+  }
+  // 无论时区：dateKeyOf 的结果必须等于本地日历字段，而不是 UTC 日历字段
+  assert.equal(localKey, d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+    + '-' + String(d.getDate()).padStart(2, '0'));
+  // 文件名里绝不能出现 UTC 的日期键
+  assert.notEqual(backupFileName(localKey), backupFileName(utcKey));
 });
 
 test('闰年：2024-02 有 29 天，2026-02 只有 28 天', () => {

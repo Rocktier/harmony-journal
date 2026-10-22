@@ -139,8 +139,12 @@ struct Settings {
     // SDK 里没有 DocumentSavePicker 类 —— 保存走 DocumentViewPicker.save(DocumentSaveOptions)（查过 .d.ts）
     const docPicker: picker.DocumentViewPicker = new picker.DocumentViewPicker();
     try {
+      // ⚠️ 用 todayKey()（本地时区），**不能**用 toISOString()（UTC）：
+      // 东八区 00:00~08:00 导出时，UTC 还是前一天 ⇒ 文件名会写成昨天
+      // （2026-10-23 凌晨实测：文件名显示 2026-10-22）。
+      // 这是 N3 那个 UTC 坑的第二次出现 —— Editor 里早已修过，这两处是漏网的。
       const saveOpt: picker.DocumentSaveOptions = {
-        newFileNames: [backupFileName(new Date().toISOString().substring(0, 10))]
+        newFileNames: [backupFileName(todayKey())]
       };
       const uris: string[] = await docPicker.save(saveOpt);
       if (uris.length === 0) {
@@ -196,7 +200,8 @@ struct Settings {
     const docPicker: picker.DocumentViewPicker = new picker.DocumentViewPicker();
     try {
       const saveOpt: picker.DocumentSaveOptions = {
-        newFileNames: [readableFileName(new Date().toISOString().substring(0, 10), ext)]
+        // 同加密备份：一律 todayKey()（本地时区），不要 toISOString()
+        newFileNames: [readableFileName(todayKey(), ext)]
       };
       const uris: string[] = await docPicker.save(saveOpt);
       if (uris.length === 0) {
