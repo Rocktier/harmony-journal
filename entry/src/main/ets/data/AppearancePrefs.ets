@@ -16,7 +16,7 @@ import { APPEARANCE_SYSTEM, AppearanceMode, normalizeAppearance } from '../commo
 const STORE_NAME: string = 'appearance';
 const KEY_MODE: string = 'mode';
 
-const DOMAIN: number = 0x0000;
+const DOMAIN: number = 0xD002;
 const TAG: string = 'RockJournal';
 
 export class AppearancePrefs {

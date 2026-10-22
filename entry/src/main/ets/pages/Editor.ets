@@ -1,16 +1,16 @@
 import { common } from '@kit.AbilityKit';
 import { fileIo as fs, fileUri, picker } from '@kit.CoreFileKit';
-import { router } from '@kit.ArkUI';
+import { curves, router } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 import { ImageStore } from '../data/ImageStore';
 import { ChevronButton } from '../components/ChevronButton';
 import { AppearanceIconButton } from '../components/AppearanceIconButton';
 
-import { Block, Span, UNDO_LIMIT, blocksToJson, jsonToBlocks, popSnapshot, pushSnapshot, wordCountOf } from '../data/NoteBlocks';
+import { Block, Span, RawSpan, UNDO_LIMIT, blocksToJson, jsonToBlocks, mergeSpans, popSnapshot, pushSnapshot, wordCountOf } from '../data/NoteBlocks';
 import { blocksToLines, linesToBlocks } from '../data/NoteBridge';
 import {
-  MOODS, Mood, NoteMeta, dateKeyOf, isValidDateKey, parseTags, tagsToText, timeOfDay, todayKey
+  MOODS, MOOD_CUSTOM_ID, Mood, NoteMeta, dateKeyOf, isValidDateKey, parseTags, tagsToText, timeOfDay, todayKey
 } from '../data/NoteMeta';
 import { capsuleLocked, earliestUnlock, isCapsule } from '../data/NoteMeta';
 import { JournalTemplate, TEMPLATES } from '../data/JournalTemplates';
@@ -20,8 +20,6 @@ import { APPEARANCE_SYSTEM, AppearanceMode, nextAppearance } from '../common/App
 import { applyPaletteMode } from '../common/AppearanceApply';
 import { AppearancePrefs } from '../data/AppearancePrefs';
 import { getStore } from '../data/NoteStoreHolder';
-import { RawSpan } from '../data/NoteBlocks';
-import { mergeSpans } from '../data/NoteBlocks';
 import { RJ_FS_BODY, RJ_FS_CALLOUT, RJ_FS_CAPTION, RJ_FS_HEADING, RJ_FS_META, RJ_FS_TITLE, RJ_RADIUS_LG, RJ_RADIUS_SM, RJ_SP_LG, RJ_SP_MD, RJ_SP_SM, RJ_SP_XL, RJ_SP_XS, RJ_SP_XXL } from '../theme/RjTokens';
 import { ThemePalette } from '../theme/ThemePalette';
 
@@ -34,7 +32,7 @@ import { ThemePalette } from '../theme/ThemePalette';
  *  - 块类型靠**行前缀**：`# ` 标题、`- ` 列表（Markdown 仅作输入快捷键，不占工具栏）
  *  - `getSpans()` 碎片化 → 交给 `mergeSpans` 合并后再转块（数据层职责，不在这里做）
  */
-const DOMAIN: number = 0x0000;
+const DOMAIN: number = 0xD002;
 const TAG: string = 'RockJournal';
 /**
  * ⚠️ RichEditor 没有 fontSize 属性，正文字号只能在 `addTextSpan` 的 span style 与
@@ -74,6 +72,14 @@ struct Editor {
   @State private capsuleLockedNow: boolean = false;
   /** 模板条是否展开（新篇空正文时才给入口） */
   @State private templatesOpen: boolean = false;
+  /**
+   * 动效状态（2026-10-22 评审 P0-1 动效包）：
+   * favKick/saveFlash 是"一拍即走"的脉冲量 —— 点击时置 true，
+   * 40~60ms 后归 false，spring 曲线把它带回原位并过冲一下 = 弹跳感。
+   * （显式两段式：属性动画的触发条件是属性值变化，单布尔翻不出"回弹"。）
+   */
+  @State private favKick: boolean = false;
+  @State private saveFlash: boolean = false;
   /** 最近一次成功保存的时刻（HH:mm）—— 给"真的存上了"一个确定感 */
   @State private savedAt: string = '';
   /** 撤销/重做是否可用（块级快照；本 SDK 的 RichEditor 无 undo API） */
@@ -265,7 +271,7 @@ struct Editor {
   }
 
   /** 切换到这一天的上一篇/下一篇（**先保存当前**，否则丢编辑中的内容） */
-  private async switchTo(delta: number): Promise<void> {
+  private switchTo(delta: number): void {
     const next: number = this.dayIndex + delta;
     if (next < 0 || next >= this.dayEntries.length) {
       return;
@@ -282,7 +288,7 @@ struct Editor {
   }
 
   /** 这天再来一篇（先保存当前的；新篇写了才会落盘，不会留下空日记） */
-  private async addAnotherHere(): Promise<void> {
+  private addAnotherHere(): void {
     this.save();
     const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
     this.entryId = this.store.newEntryId();
@@ -463,6 +469,27 @@ struct Editor {
     this.imgPaths = paths;
   }
 
+  /**
+   * 删除插图（2026-10-22 评审 P2-1：imgRefs 原来只 concat 不 splice ——
+   * 误插图只能删整篇，这是数据编辑权的缺口）。
+   * 删 ref + 删加密文件 + 保存：三步任一失败都不丢 ref（宁可多留密文不留死引用）。
+   */
+  private removeImage(index: number): void {
+    if (index < 0 || index >= this.imgRefs.length) {
+      return;
+    }
+    const ref: string = this.imgRefs[index];
+    const removed: string[] = this.imgRefs.slice();
+    removed.splice(index, 1);
+    if (!this.images.remove(ref)) {
+      hilog.error(DOMAIN, TAG, 'remove image file failed, keep ref: %{public}s', ref);
+      return;
+    }
+    this.imgRefs = removed;
+    this.refreshImagePreviews(getContext(this) as common.UIAbilityContext);
+    this.save();
+  }
+
   /** 选图 → 读原文件 → 加密落沙箱 → 只把 ref 记进正文 */
   private async pickImage(): Promise<void> {
     const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
@@ -566,6 +593,11 @@ struct Editor {
       }
       // 给出"真的存上了、什么时候存的"的确定感（安全感的来源是这个时间戳）
       this.savedAt = timeOfDay(Date.now());
+      // 保存脉冲（P0-1）：文字轻轻放大一拍再归位 —— "存上了"从一行灰字变成一个动作
+      this.saveFlash = true;
+      setTimeout(() => {
+        this.saveFlash = false;
+      }, 60);
       // 保存后这一天的篇数/次序可能变了 ⇒ 切换条必须跟着刷新
       this.resolveDayList();
     }
@@ -584,18 +616,24 @@ struct Editor {
     });
   }
 
-  /** 心情下拉的选项：0 号是「无」（用于取消），其后依次对应 MOODS */
+  /** 心情下拉的选项：0 号是「无」（用于取消），其后依次对应 MOODS，最后一项「✏️ 自定义」 */
   private moodOptions(): SelectOption[] {
     const opts: SelectOption[] = [];
     opts.push({ value: '无' });
     MOODS.forEach((m: Mood) => {
       opts.push({ value: m.emoji });
     });
+    // 自定义心情（数据层 MOOD_CUSTOM_ID 早已就绪：索引/备份/列表都有消费分支，
+    // 这里是它唯一的用户入口 —— 2026-10-22 评审 P0-3 断头路清零）
+    opts.push({ value: '✏️' });
     return opts;
   }
 
-  /** 当前心情在下拉里的序号（没选 = 0） */
+  /** 当前心情在下拉里的序号（没选 = 0；custom = MOODS.length + 1） */
   private moodSelectedIndex(): number {
+    if (this.mood === MOOD_CUSTOM_ID) {
+      return MOODS.length + 1;
+    }
     for (let i: number = 0; i < MOODS.length; i++) {
       if (MOODS[i].id === this.mood) {
         return i + 1;
@@ -604,14 +642,37 @@ struct Editor {
     return 0;
   }
 
-  /** 下拉框收起时显示的文字（没选显示"心情"当占位） */
+  /** 下拉框收起时显示的文字（没选显示"心情"当占位；custom 显示用户自己写的文案） */
   private moodDisplay(): string {
+    if (this.mood === MOOD_CUSTOM_ID) {
+      return this.moodText.length > 0 ? this.moodText.substring(0, 4) : '✏️';
+    }
     for (let i: number = 0; i < MOODS.length; i++) {
       if (MOODS[i].id === this.mood) {
         return MOODS[i].emoji;
       }
     }
     return '心情';
+  }
+
+  /**
+   * 页面转场（2026-10-22 评审 P0-1 动效包）：
+   * 全家族统一的推栈语言 —— push 从右滑入、pop 退回右侧，280ms Friction。
+   * 位移刻意只给 200vp（不满屏横扫）：克制，是纸翻页不是应用切换。
+   */
+  pageTransition() {
+    PageTransitionEnter({ type: RouteType.Push, duration: 280, curve: Curve.Friction })
+      .translate({ x: 200 })
+      .opacity(0.6)
+    PageTransitionExit({ type: RouteType.Push, duration: 280, curve: Curve.Friction })
+      .translate({ x: -80 })
+      .opacity(0.8)
+    PageTransitionEnter({ type: RouteType.Pop, duration: 280, curve: Curve.Friction })
+      .translate({ x: -80 })
+      .opacity(0.8)
+    PageTransitionExit({ type: RouteType.Pop, duration: 280, curve: Curve.Friction })
+      .translate({ x: 200 })
+      .opacity(0.6)
   }
 
   build() {
@@ -686,8 +747,18 @@ struct Editor {
           .padding(RJ_SP_SM)
           .responseRegion({ x: -6, y: -6, width: '100%', height: 44 })
           .accessibilityText(this.favorite ? '取消收藏' : '收藏这一篇')
+          // ⭐ 弹跳（P0-1）：点击瞬间放大 1.3，spring 把它带回 1 并过冲 ——
+          //   印章"钤下去"的手感。favorite 的颜色切换由同一帧 animateTo 驱动。
+          .scale({ x: this.favKick ? 1.3 : 1.0, y: this.favKick ? 1.3 : 1.0 })
+          .animation({ duration: 320, curve: curves.springMotion(0.3, 0.7) })
           .onClick(() => {
-            this.favorite = !this.favorite;
+            this.favKick = true;
+            animateTo({ duration: 260, curve: curves.springMotion(0.4, 0.8) }, () => {
+              this.favorite = !this.favorite;
+            });
+            setTimeout(() => {
+              this.favKick = false;
+            }, 50);
             this.save();
           })
         /**
@@ -809,8 +880,14 @@ struct Editor {
           .enabled(!this.capsuleOn)
           .opacity(this.capsuleOn ? 0.4 : 1)
           .onSelect((index: number) => {
-            this.mood = index === 0 ? '' : MOODS[index - 1].id;
-            if (this.mood.length === 0) {
+            if (index === 0) {
+              this.mood = '';
+              this.moodText = '';
+            } else if (index === MOODS.length + 1) {
+              // 自定义：mood 置 'custom'，文案等下面的输入框给（不强制必填）
+              this.mood = MOOD_CUSTOM_ID;
+            } else {
+              this.mood = MOODS[index - 1].id;
               this.moodText = '';
             }
             this.save();
@@ -836,6 +913,35 @@ struct Editor {
       }
       .width('100%')
       .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_MD })
+
+      /**
+       * 自定义心情文案（mood === 'custom' 时才出现）。
+       * 数据链路全就绪：NoteMeta.moodText → 索引 → 列表 moodEmoji 显示前 2 字、
+       * 备份 moodLabelOf 用全文 —— 这里补上唯一的缺环（2026-10-22 P0-3）。
+       * 限长 12：列表/时间轴只显示前 2 字（moodEmoji 截断），超长没有意义。
+       */
+      if (this.mood === MOOD_CUSTOM_ID) {
+        Row() {
+          Text('✏️')
+            .fontSize(RJ_FS_CAPTION)
+            .fontColor(this.palette.text2)
+          TextInput({ placeholder: '用一个词形容今天（最多 12 字）', text: this.moodText })
+            .fontSize(RJ_FS_CAPTION)
+            .backgroundColor(this.palette.card)
+            .fontColor(this.palette.text)
+            .placeholderColor(this.palette.text3)
+            .maxLength(12)
+            .height(40)
+            .layoutWeight(1)
+            .margin({ left: RJ_SP_MD })
+            .onChange((v: string) => {
+              this.moodText = v;
+              this.scheduleSave();
+            })
+        }
+        .width('100%')
+        .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_MD })
+      }
 
       /**
        * 时间胶囊（2026-10-20 同质化整改的核心功能）
@@ -869,6 +975,10 @@ struct Editor {
             .backgroundColor(this.palette.card)
             .borderRadius(RJ_RADIUS_SM)
             .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_SM, bottom: RJ_SP_SM })
+            // 开关拨上时滑入（P0-1）；说明小字同理（下方同款 transition）
+            .transition(TransitionEffect.OPACITY
+              .combine(TransitionEffect.translate({ y: 6 }))
+              .animation({ duration: 200, curve: Curve.EaseOut }))
             .onClick(() => {
               this.openCapsuleDialog();
             })
@@ -883,6 +993,9 @@ struct Editor {
           .fontColor(this.palette.text3)
           .width('100%')
           .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_MD })
+          .transition(TransitionEffect.OPACITY
+            .combine(TransitionEffect.translate({ y: 6 }))
+            .animation({ duration: 200, curve: Curve.EaseOut, delay: 60 }))
       }
 
       /**
@@ -994,6 +1107,10 @@ struct Editor {
                 .borderRadius(RJ_RADIUS_SM)
                 .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_XS, bottom: RJ_SP_XS })
                 .margin({ left: RJ_SP_SM })
+                // 模板 chips 依次浮现（P0-1）
+                .transition(TransitionEffect.OPACITY
+                  .combine(TransitionEffect.translate({ y: 6 }))
+                  .animation({ duration: 200, curve: Curve.EaseOut, delay: 40 }))
                 .onClick(() => {
                   this.applyTemplate(t);
                 })
@@ -1008,6 +1125,10 @@ struct Editor {
       RichEditor(this.options)
         .layoutWeight(1)
         .width('100%')
+        // P0-5 平板版心（2026-10-22）：平板满屏一行 40+ 字逐行扫视易丢行，
+        // 封顶 560vp（约 30 字/行），根 Column 默认居中 → 写作区自动居中。
+        // 手机竖屏到不了封顶，行为与旧版一致。
+        .constraintSize({ maxWidth: 560 })
         // ⚠️ 必须显式给底色：系统 RichEditor 默认**白底**，设 `Color.Transparent`
         // 也挡不住（2026-10-12 模拟器实测：深色模式下正文区 42.7% 白、底部状态区
         // 84.6% 白 —— 晚上写日记等于对着一片白，正是党哥要解决的那个场景）。
@@ -1040,14 +1161,32 @@ struct Editor {
       // 已插入的图片（缩略图；正文里只存加密文件的引用）
       if (this.imgPaths.length > 0) {
         Row() {
-          ForEach(this.imgPaths, (p: string) => {
+          ForEach(this.imgPaths, (p: string, index: number) => {
             if (p.length > 0) {
-              Image(fileUri.getUriFromPath(p))
-                .width(64)
-                .height(64)
-                .objectFit(ImageFit.Cover)
-                .borderRadius(RJ_RADIUS_SM)
-                .margin({ right: RJ_SP_MD })
+              // Stack 包一层放删除角标（P2-1：误插图原来只能删整篇）
+              Stack({ alignContent: Alignment.TopEnd }) {
+                Image(fileUri.getUriFromPath(p))
+                  .width(64)
+                  .height(64)
+                  .objectFit(ImageFit.Cover)
+                  .borderRadius(RJ_RADIUS_SM)
+                Button('×', { type: ButtonType.Circle, stateEffect: true })
+                  .fontSize(RJ_FS_META)
+                  .fontColor(this.palette.bg)
+                  .backgroundColor(this.palette.text3)
+                  .width(20)
+                  .height(20)
+                  .margin({ right: -6, top: -6 })
+                  .accessibilityText('删除这张图片')
+                  .onClick(() => {
+                    this.removeImage(index);
+                  })
+              }
+              .margin({ right: RJ_SP_MD })
+              // 插图后缩略图浮现（P0-1）
+              .transition(TransitionEffect.OPACITY
+                .combine(TransitionEffect.scale({ x: 0.8, y: 0.8 }))
+                .animation({ duration: 220, curve: Curve.EaseOut }))
             }
           }, (p: string, index: number) => index + p)
         }
@@ -1080,6 +1219,8 @@ struct Editor {
           .fontFamily('monospace')
           .fontColor(this.palette.text3)
           .opacity(this.saved ? 0.7 : 0.4)
+          // 保存脉冲：saveFlash 置 true 的瞬间放大 1.06，spring 归位（P0-1）
+          .scale({ x: this.saveFlash ? 1.06 : 1.0, y: this.saveFlash ? 1.06 : 1.0 })
           .animation({ duration: 220, curve: Curve.EaseOut })
       }
       .width('100%')

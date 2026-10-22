@@ -12,7 +12,7 @@ import { VaultService } from './VaultService';
  * 流程：选图（系统照片选择器）→ 读原文件 → 用主密钥加密 → 写 `img/<id>.enc`
  *      正文里只留 `img/<id>.enc` 这个相对路径。
  */
-const DOMAIN: number = 0x0000;
+const DOMAIN: number = 0xD002;
 const TAG: string = 'RockJournal';
 const IMG_DIR: string = 'img';
 const IMG_EXT: string = '.enc';
@@ -55,6 +55,24 @@ export class ImageStore {
       return true;
     } catch (e) {
       hilog.error(DOMAIN, TAG, 'save image failed: %{public}s', JSON.stringify(e));
+      return false;
+    }
+  }
+
+  /**
+   * 删除加密图片文件（2026-10-22 评审 P2-1：插图此前不可删，误插图只能删整篇）。
+   * 文件不存在按成功处理（幂等）；失败记日志返 false，调用方保留 ref 不留孤儿引用。
+   */
+  remove(ref: string): boolean {
+    const path: string = this.root + '/' + ref.substring(IMG_DIR.length + 1);
+    try {
+      if (!fs.accessSync(path)) {
+        return true;
+      }
+      fs.unlinkSync(path);
+      return true;
+    } catch (e) {
+      hilog.error(DOMAIN, TAG, 'remove image failed: %{public}s', JSON.stringify(e));
       return false;
     }
   }

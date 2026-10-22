@@ -13,7 +13,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 const STORE_NAME: string = 'viewmode';
 const KEY_MODE: string = 'mode';
 
-const DOMAIN: number = 0x0000;
+const DOMAIN: number = 0xD002;
 const TAG: string = 'RockJournal';
 
 /** 视图模式：月历（俯视一个月）/ 时光（所有日子倒序流淌） */

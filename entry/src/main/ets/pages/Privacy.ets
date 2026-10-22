@@ -113,6 +113,23 @@ function splitInline(line: string): InlinePart[] {
 struct Privacy {
   /** 运行时色板（深浅切换 = AppStorage 换对象，页面栈不动；见 ThemePalette 头注） */
   @StorageLink('palette') palette: ThemePalette = new ThemePalette(false);
+
+  /** 页面转场（2026-10-22 P0-1 动效包）：与全家族统一的推栈语言（见 Editor.pageTransition） */
+  pageTransition() {
+    PageTransitionEnter({ type: RouteType.Push, duration: 280, curve: Curve.Friction })
+      .translate({ x: 200 })
+      .opacity(0.6)
+    PageTransitionExit({ type: RouteType.Push, duration: 280, curve: Curve.Friction })
+      .translate({ x: -80 })
+      .opacity(0.8)
+    PageTransitionEnter({ type: RouteType.Pop, duration: 280, curve: Curve.Friction })
+      .translate({ x: -80 })
+      .opacity(0.8)
+    PageTransitionExit({ type: RouteType.Pop, duration: 280, curve: Curve.Friction })
+      .translate({ x: 200 })
+      .opacity(0.6)
+  }
+
   build() {
     Column() {
       Row() {

@@ -9,7 +9,7 @@ import { applyPaletteMode } from '../common/AppearanceApply';
 import { APP_NAME_CN, APP_VERSION } from '../common/AppMeta';
 import { DEV_SHOW_BADGE } from '../common/DevFlags';
 import { AppearancePrefs } from '../data/AppearancePrefs';
-import { JournalStats, capsuleLocked, computeStats, dateKeyOf, todayKey } from '../data/NoteMeta';
+import { JournalStats, capsuleLocked, computeStats, dateKeyOf, daysSinceMs, needsBackupReminder, todayKey } from '../data/NoteMeta';
 import { ChevronButton } from '../components/ChevronButton';
 import { getStore } from '../data/NoteStoreHolder';
 import {
@@ -25,7 +25,7 @@ import { ThemePalette } from '../theme/ThemePalette';
  * 备份是**离线日记的生命线**（评估文档四①）：手机丢了、坏了、换机 = 全没了，
  * 用户敢不敢用全看这一条。所以导出走系统文件选择器，存到用户自己的目录。
  */
-const DOMAIN: number = 0x0000;
+const DOMAIN: number = 0xD002;
 const TAG: string = 'RockJournal';
 
 @Entry
@@ -35,6 +35,14 @@ struct Settings {
   @StorageLink('palette') palette: ThemePalette = new ThemePalette(false);
   @State private noteCount: number = 0;
   @State private lastBackup: string = '从未';
+  /**
+   * 备份到期提醒（2026-10-22 P0-3 断头路清零）：
+   * 首页横幅按党哥 2026-10-15 的决策不回来（低频工具不抢主体注意力），
+   * 但 needsBackupReminder 的完整实现不能没有消费方 —— 落位在设置页这行
+   * 常驻信息上：到期时文案升格成"该备份了"，颜色升到 text2（不动红色纪律）。
+   */
+  @State private backupDue: boolean = false;
+  @State private backupDays: number = -1;
   @State private toast: string = '';
   @State private stats: JournalStats = {
     total: 0, days: 0, words: 0, streak: 0, longest: 0, wroteToday: false
@@ -50,6 +58,8 @@ struct Settings {
     // 上次备份：**读真实记录**，不再写死"从未"（否则"生命线"永远是句空话）
     const at: number = this.store.lastBackupAt();
     this.lastBackup = at > 0 ? dateKeyOf(new Date(at)) : '从未';
+    this.backupDays = daysSinceMs(at, Date.now());
+    this.backupDue = needsBackupReminder(at, Date.now(), this.noteCount > 0, 30);
     this.prefs.open(getContext(this) as common.Context);
     this.appearance = this.prefs.get();
   }
@@ -146,6 +156,9 @@ struct Settings {
       this.toast = '已导出 ' + items.length + ' 篇';
       this.store.markBackup();
       this.lastBackup = todayKey();
+      // 导出成功 ⇒ 到期提醒即时解除（不用退出重进才消）
+      this.backupDays = 0;
+      this.backupDue = false;
       hilog.info(DOMAIN, TAG, 'exported %{public}d notes', items.length);
     } catch (e) {
       hilog.error(DOMAIN, TAG, 'export failed: %{public}s', JSON.stringify(e));
@@ -237,6 +250,22 @@ struct Settings {
     }
   }
 
+  /** 页面转场（2026-10-22 P0-1 动效包）：与全家族统一的推栈语言（见 Editor.pageTransition） */
+  pageTransition() {
+    PageTransitionEnter({ type: RouteType.Push, duration: 280, curve: Curve.Friction })
+      .translate({ x: 200 })
+      .opacity(0.6)
+    PageTransitionExit({ type: RouteType.Push, duration: 280, curve: Curve.Friction })
+      .translate({ x: -80 })
+      .opacity(0.8)
+    PageTransitionEnter({ type: RouteType.Pop, duration: 280, curve: Curve.Friction })
+      .translate({ x: -80 })
+      .opacity(0.8)
+    PageTransitionExit({ type: RouteType.Pop, duration: 280, curve: Curve.Friction })
+      .translate({ x: 200 })
+      .opacity(0.6)
+  }
+
   build() {
     Column() {
       Row() {
@@ -314,11 +343,22 @@ struct Settings {
         .width('100%')
         .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_LG })
 
-      Text('共 ' + this.noteCount + ' 篇 · 上次备份 ' + this.lastBackup)
-        .fontSize(RJ_FS_META)
-        .fontColor(this.palette.text3)
-        .width('100%')
-        .padding({ left: RJ_SP_XXL, top: RJ_SP_SM, bottom: RJ_SP_XL })
+      // 到期提醒三态：正常（text3）→ 到期（text2 + 催促文案）；红色纪律只给"错了"，这里不碰
+      if (this.backupDue) {
+        Text(this.backupDays >= 0
+          ? '共 ' + this.noteCount + ' 篇 · 距上次备份 ' + this.backupDays + ' 天了，记得导出一份'
+          : '共 ' + this.noteCount + ' 篇 · 还从未备份过，记得导出一份')
+          .fontSize(RJ_FS_META)
+          .fontColor(this.palette.text2)
+          .width('100%')
+          .padding({ left: RJ_SP_XXL, top: RJ_SP_SM, bottom: RJ_SP_XL })
+      } else {
+        Text('共 ' + this.noteCount + ' 篇 · 上次备份 ' + this.lastBackup)
+          .fontSize(RJ_FS_META)
+          .fontColor(this.palette.text3)
+          .width('100%')
+          .padding({ left: RJ_SP_XXL, top: RJ_SP_SM, bottom: RJ_SP_XL })
+      }
 
       // 统计（Diarium 的 diary statistics 同款；全部从内存索引算，零 IO）
       Text('统计')

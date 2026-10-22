@@ -6,7 +6,7 @@ import { applyAppearanceAtStartup } from '../common/AppearanceApply';
 import { AppearancePrefs } from '../data/AppearancePrefs';
 import { bootstrap } from '../data/NoteStoreHolder';
 
-const DOMAIN: number = 0x0000;
+const DOMAIN: number = 0xD002;
 const TAG: string = 'RockJournal';
 
 export default class EntryAbility extends UIAbility {

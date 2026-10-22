@@ -30,7 +30,7 @@ import { ThemePalette } from '../theme/ThemePalette';
  *   ② 时光时间轴：能看到"自己写过的话"（摘要缓存进索引，零额外 IO）+ 照片缩略图
  *   —— 光有日期和字数的列表是张表，不是隧道。
  */
-const DOMAIN: number = 0x0000;
+const DOMAIN: number = 0xD002;
 const TAG: string = 'RockJournal';
 /**
  * 那年今日最多展示几条。
@@ -96,8 +96,23 @@ struct Index {
   @State private mode: string = 'month';
   @State private monthKey: string = monthOf(todayKey());
   @State private query: string = '';
+  /**
+   * 搜索的解密会话缓存（2026-10-22 评审 P1-6）：
+   * 原实现每次按键都逐篇"文件 IO + AES 解密"构建 texts —— 几百篇后每键必卡。
+   * 现在把「构建 texts」（贵）与「按 query 过滤」（纯内存）分离：
+   * 同一批数据（metas 未变）只解密一次，后续按键只重跑 searchNotes。
+   * reload() 会把 searchSessionValid 置 false（数据变了必须重建）。
+   */
+  private searchSessionTexts: NoteText[] = [];
+  private searchSessionValid: boolean = false;
+  /** 搜索防抖定时器（300ms；键盘每键一次 onChange，逐篇解密扛不住连击） */
+  private searchTimer: number = -1;
   @State private hits: SearchHit[] = [];
   @State private loaded: boolean = false;
+  // P0-5 平板适配决策记录（2026-10-22）：月视图不做断点分栏。
+  // 月历是 7 列周结构（列数不可变）；日记列表行是"日期 + 短摘要"，全宽拉伸
+  // 不产生 Reader/Editor 那种"一行 40+ 字"的可读性问题；宽屏分栏（月历|列表）
+  // 属大改，收益不抵回归风险。编辑器侧的版心封顶已做（Editor.ets maxWidth 560）。
   @State private recall: RecallCard[] = [];
   @State private stats: JournalStats = {
     total: 0, days: 0, words: 0, streak: 0, longest: 0, wroteToday: false
@@ -198,6 +213,8 @@ struct Index {
     this.loaded = true;
     this.allTags = collectTags(this.metas);
     this.stats = computeStats(this.metas, todayKey(), nowMs);
+    // 数据变了 ⇒ 搜索的解密缓存失效（见 runSearch 的会话缓存说明）
+    this.searchSessionValid = false;
     this.refreshData();
     this.buildRecall();
     hilog.info(DOMAIN, TAG, 'index loaded: %{public}d notes, recall %{public}d', this.metas.length, this.recall.length);
@@ -433,22 +450,27 @@ struct Index {
 
   private runSearch(): void {
     const nowMs: number = Date.now();
-    const texts: NoteText[] = [];
-    for (let i: number = 0; i < this.metas.length; i++) {
-      const m: NoteMeta = this.metas[i];
-      // 未到期的胶囊不进搜索 —— 命中片段的 snippet 会剧透内容（封存纪律的搜索侧对应物）
-      if (capsuleLocked(m, nowMs)) {
-        continue;
+    // 会话缓存未命中才解密（数据变了/首次搜索）；命中则直接复用上次的明文
+    if (!this.searchSessionValid) {
+      const texts: NoteText[] = [];
+      for (let i: number = 0; i < this.metas.length; i++) {
+        const m: NoteMeta = this.metas[i];
+        // 未到期的胶囊不进搜索 —— 命中片段的 snippet 会剧透内容（封存纪律的搜索侧对应物）
+        if (capsuleLocked(m, nowMs)) {
+          continue;
+        }
+        const item: NoteText = {
+          id: m.id,
+          date: m.date,
+          text: this.store.textOf(m.id),
+          tags: m.tags
+        };
+        texts.push(item);
       }
-      const item: NoteText = {
-        id: m.id,
-        date: m.date,
-        text: this.store.textOf(m.id),
-        tags: m.tags
-      };
-      texts.push(item);
+      this.searchSessionTexts = texts;
+      this.searchSessionValid = true;
     }
-    this.hits = searchNotes(texts, this.query);
+    this.hits = searchNotes(this.searchSessionTexts, this.query);
   }
 
   private moodEmoji(m: NoteMeta): string {
@@ -460,6 +482,25 @@ struct Index {
     }
     const found = moodById(m.mood);
     return found === null ? '' : found.emoji;
+  }
+
+  /**
+   * 页面转场（2026-10-22 评审 P0-1 动效包）：与 Editor/Settings/Capsule 统一的推栈语言。
+   * 主页作为栈底，被 push 时的退出是"让位"（轻微左移+压暗），回来时反向复位。
+   */
+  pageTransition() {
+    PageTransitionEnter({ type: RouteType.Push, duration: 280, curve: Curve.Friction })
+      .translate({ x: 200 })
+      .opacity(0.6)
+    PageTransitionExit({ type: RouteType.Push, duration: 280, curve: Curve.Friction })
+      .translate({ x: -80 })
+      .opacity(0.8)
+    PageTransitionEnter({ type: RouteType.Pop, duration: 280, curve: Curve.Friction })
+      .translate({ x: -80 })
+      .opacity(0.8)
+    PageTransitionExit({ type: RouteType.Pop, duration: 280, curve: Curve.Friction })
+      .translate({ x: 200 })
+      .opacity(0.6)
   }
 
   build() {
@@ -658,11 +699,19 @@ struct Index {
         .margin({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_MD })
         .onChange((v: string) => {
           this.query = v;
-          if (v.length > 0) {
-            this.runSearch();
-          } else {
-            this.hits = [];
+          // 防抖 300ms（P1-6）：停止输入半秒才真搜 —— 逐篇解密的成本不该付在每次按键上
+          if (this.searchTimer >= 0) {
+            clearTimeout(this.searchTimer);
+            this.searchTimer = -1;
           }
+          if (v.length === 0) {
+            this.hits = [];
+            return;
+          }
+          this.searchTimer = setTimeout(() => {
+            this.searchTimer = -1;
+            this.runSearch();
+          }, 300);
         })
 
       // 那年今日：搜索时不打扰；没有往年内容就**完全不渲染**（不留空壳）
@@ -828,6 +877,11 @@ struct Index {
               .justifyContent(FlexAlign.Center)
               .width('100%')
               .height('100%')
+              // 切月浮现（P0-1）：月份切换时全部格子 key 更新 ⇒ 新格子淡入+微缩放，
+              // 旧格子淡出 —— "翻到另一页"而不是"瞬间替换"
+              .transition(TransitionEffect.OPACITY
+                .combine(TransitionEffect.scale({ x: 0.92, y: 0.92 }))
+                .animation({ duration: 180, curve: Curve.EaseOut }))
             }
             .onClick(() => {
               this.open(cell.date);
@@ -840,17 +894,42 @@ struct Index {
         .height(this.calRows() * 50)
         .padding({ left: RJ_SP_XL, right: RJ_SP_XL })
 
+        // 新用户引导（P2-8，2026-10-22 整改）：月视图原来没有任何空态 ——
+        // 第一个月全是空格子，不知道从哪开始。给一句方向明确的引导。
+        if (this.loaded && this.metas.length === 0) {
+          Column() {
+            Text('从今天开始')
+              .fontSize(RJ_FS_CALLOUT)
+              .fontColor(this.palette.text3)
+            Text('点上面的「写今天」，写下第一篇')
+              .fontSize(RJ_FS_CAPTION)
+              .fontColor(this.palette.text3)
+              .margin({ top: RJ_SP_SM })
+          }
+          .width('100%')
+          .margin({ top: RJ_SP_VOID_L })
+        }
       } else {
         // 时光时间轴（全部，按年月分块，倒序）
         if (!this.loaded || this.metas.length === 0) {
           Column() {
-            Text('还没有日记')
-              .fontSize(RJ_FS_CALLOUT)
-              .fontColor(this.palette.text3)
-            Text('点下面的按钮，写今天')
-              .fontSize(RJ_FS_CAPTION)
-              .fontColor(this.palette.text3)
-              .margin({ top: RJ_SP_MD })
+            // ⏳ !loaded = 还在读索引（300ms bootstrap 兜底）：显示骨架占位而不是"还没有日记"
+            //    （否则冷启动先闪一帧空态再闪数据，空态说谎——P1-2/P1-1，2026-10-22 整改）
+            if (!this.loaded) {
+              Text('···')
+                .fontSize(RJ_FS_TITLE)
+                .fontColor(this.palette.text3)
+            } else {
+              Text('还没有日记')
+                .fontSize(RJ_FS_CALLOUT)
+                .fontColor(this.palette.text3)
+              // ⚠️ 2026-10-22 修正（P1-2）：「写今天」按钮早已提到头部（891 行注释），
+              //    文案还指向不存在的"下面" —— 空态必须指对地方
+              Text('点上面的「写今天」，记下第一篇')
+                .fontSize(RJ_FS_CAPTION)
+                .fontColor(this.palette.text3)
+                .margin({ top: RJ_SP_MD })
+            }
           }
           .margin({ top: RJ_SP_VOID_L })
         }

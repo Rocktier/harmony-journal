@@ -19,7 +19,7 @@ import { NONCE_LEN, TAG_LEN } from '../data/VaultFrame';
  * ⚠️ 用户删了指纹：HUKS key 失效 → 生物路径抛错 → 自动降级主密码。两份备份互为兜底。
  * ⚠️ 所有 HUKS / crypto 调用都包 try/catch；本文件不引 UI，返回值/null 交给上层判断。
  */
-const DOMAIN: number = 0x0000;
+const DOMAIN: number = 0xD002;
 const TAG: string = 'RockJournal';
 const PBKDF2_ITERATIONS: number = 100000;
 const KEY_SIZE: number = 32; // AES-256

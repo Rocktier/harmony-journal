@@ -48,10 +48,12 @@ export const TEMPLATES: JournalTemplate[] = [
   }
 ];
 
-/** 空白模板（显式给一个"什么都不套"的出口，按钮才不会缺一角） */
-export const TEMPLATE_BLANK_ID: string = 'blank';
+/**
+ * ~~TEMPLATE_BLANK_ID~~ —— 2026-10-22 删除：定义于 1.0.2，从未被任何 UI/逻辑消费
+ * （模板条只在空日记时出现，"空白模板"按钮没有存在场景）。死代码清零。
+ */
 
-/** 按 id 找模板；找不到（含 blank）返回 null */
+/** 按 id 找模板；找不到返回 null */
 export function templateById(id: string): JournalTemplate | null {
   for (let i: number = 0; i < TEMPLATES.length; i++) {
     if (TEMPLATES[i].id === id) {

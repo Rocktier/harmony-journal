@@ -18,12 +18,6 @@ import { Block, BlockType, BLOCK_TYPE_H, BLOCK_TYPE_IMG, BLOCK_TYPE_LI, BLOCK_TY
 export const H_PREFIX: string = '# ';
 export const LI_PREFIX: string = '- ';
 
-/** Markdown 快捷键的转换结果（ArkTS 不允许内联对象类型） */
-export interface MarkdownHit {
-  prefix: string;
-  rest: string;
-}
-
 /** 行文本 → 块类型（只认行首前缀，避免正文里写个 '-' 就被当列表） */
 export function blockTypeOfLine(line: string): BlockType {
   if (line.startsWith(H_PREFIX)) {
@@ -116,19 +110,14 @@ export function blocksToLines(blocks: Block[]): string[] {
 }
 
 /**
- * 输入 `# ` / `- ` 时的即时转换（Markdown 快捷键）。
- * 返回 null = 不需要转换。
+ * ~~markdownTransform（Markdown 快捷键即时转换）~~ —— 2026-10-22 删除。
+ *
+ * 生平：为 RichEditor 的 `# `/`- ` 快捷键设计，但从未接进任何 UI；
+ * 2026-10-12 的产品决策（占位文案不提 Markdown、不引导用户学标记语法）
+ * 又把它唯一的接入理由否掉了 —— 一个既无调用方、又与产品哲学相悖的
+ * 纯函数，留着只会在评审里被记一笔「断头路」。
+ * 块前缀的**解析**（blockTypeOfLine/stripPrefix）保留：老日记里存着
+ * `# `/`- ` 文本，那是数据兼容，不是快捷键功能。
  */
-export function markdownTransform(line: string): MarkdownHit | null {
-  if (line === '#') {
-    const h: MarkdownHit = { prefix: H_PREFIX, rest: '' };
-    return h;
-  }
-  if (line === '-') {
-    const li: MarkdownHit = { prefix: LI_PREFIX, rest: '' };
-    return li;
-  }
-  return null;
-}
 
 export { BLOCK_TYPE_H, BLOCK_TYPE_IMG, BLOCK_TYPE_LI, BLOCK_TYPE_P };

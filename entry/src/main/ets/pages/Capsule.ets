@@ -22,7 +22,7 @@ import { ThemePalette } from '../theme/ThemePalette';
  * 锁着的信混在里面，用户会疑心"是不是坏了"；单独一页语义干净，
  * 也是差异化功能的门面（商店截图拍的就是它）。
  */
-const DOMAIN: number = 0x0000;
+const DOMAIN: number = 0xD002;
 const TAG: string = 'RockJournal';
 
 @Entry
@@ -59,6 +59,22 @@ struct Capsule {
   onPageShow(): void {
     // 用户可能先去改系统时间再回来 —— 刷新锁定态（诚实大于防篡改，见产品口径）
     this.refresh();
+  }
+
+  /** 页面转场（2026-10-22 P0-1 动效包）：与全家族统一的推栈语言（见 Editor.pageTransition） */
+  pageTransition() {
+    PageTransitionEnter({ type: RouteType.Push, duration: 280, curve: Curve.Friction })
+      .translate({ x: 200 })
+      .opacity(0.6)
+    PageTransitionExit({ type: RouteType.Push, duration: 280, curve: Curve.Friction })
+      .translate({ x: -80 })
+      .opacity(0.8)
+    PageTransitionEnter({ type: RouteType.Pop, duration: 280, curve: Curve.Friction })
+      .translate({ x: -80 })
+      .opacity(0.8)
+    PageTransitionExit({ type: RouteType.Pop, duration: 280, curve: Curve.Friction })
+      .translate({ x: 200 })
+      .opacity(0.6)
   }
 
   build() {

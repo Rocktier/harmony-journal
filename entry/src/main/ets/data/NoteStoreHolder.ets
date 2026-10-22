@@ -15,7 +15,7 @@ import {
  * 每个页面各 new 一个 store = 各持一个没解锁的 vault = 读写全部失败。
  * 所以由 EntryAbility 在启动时解锁一次，页面共享它。
  */
-const DOMAIN: number = 0x0000;
+const DOMAIN: number = 0xD002;
 const TAG: string = 'RockJournal';
 const INDEX_FILE: string = 'index.rkd';
 

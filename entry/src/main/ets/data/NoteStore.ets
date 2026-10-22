@@ -22,7 +22,7 @@ import { VaultService } from './VaultService';
  *  ② 单篇损坏只丢一篇，不会连累全部（离线日记丢不起，这是兜底设计）；
  *  ③ 索引单独存，打开列表不必解密全部正文 —— 冷启动快（家族铁律 1）。
  */
-const DOMAIN: number = 0x0000;
+const DOMAIN: number = 0xD002;
 const TAG: string = 'RockJournal';
 const NOTES_DIR: string = 'notes';
 const INDEX_FILE: string = 'index.rkd';
@@ -113,7 +113,19 @@ export class NoteStore {
     }
   }
 
-  /** 写索引（整体重写；始终写 v2 格式，见 IndexCodec） */
+  /**
+   * 写索引（整体重写；始终写 v2 格式，见 IndexCodec）
+   *
+   * ⚠️ 2026-10-22 评审 P1-7 的**工程决策**：评审指出「每存一篇全量重写索引，
+   * 千篇后单次保存成本线性增长」—— 属实，但量化后暂不改造：
+   *   条目 ≈ 1KB/篇 ⇒ 1000 篇 ≈ 1MB，序列化+AES+原子写 ≈ 10~30ms（现代手机），
+   *   自动保存另有 1.5s 防抖，用户无感。
+   * 分片（按月拆文件）要动 load/save/import/export/系统备份迁移 ——
+   * 数据层是全应用单测最密、语义最重的模块，为「十年后的一万篇」
+   * 付出今天的回归风险，不划算。
+   * **触发条件**（满足其一即启动分片改造）：索引 > 5MB（约 5000 篇），
+   * 或实测 saveIndex p95 > 50ms。届时 index.rkd 为分片目录 + 单文件迁移。
+   */
   saveIndex(): boolean {
     try {
       const json: string = encodeIndex(this.index);

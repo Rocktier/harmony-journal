@@ -1,8 +1,44 @@
 # RockJournal 混淆规则
 # 铁律 2：release 开混淆；默认开启属性混淆与顶层作用域混淆
-# ⚠️ 借 RockReader 的教训：加密/序列化这类用 JSON 字段名的代码，
-#    字段名不能被混淆（与 NoteBlocks 存储格式相关的类开白名单，见 Phase 2）
 -enable-property-obfuscation
 -enable-toplevel-obfuscation
 -enable-filename-obfuscation
 -enable-export-obfuscation
+
+# ── P1-8 序列化字段白名单（2026-10-22 补）────────────────────────────
+# 落盘 JSON（索引 index.json / 单篇日记 blocks / 加密备份）全部是
+# JSON.stringify(holder) → 字段名写进文件。属性混淆会同步重命名
+# interface 与对象字面量的属性名：同版本自洽，但**跨版本混淆名会变** ——
+# 旧版写盘的字段名（如 mfa）新版按新名读不到，用户的日记元数据会静默清空。
+# 白名单把这些字段名钉死为明文，「十年可读」承诺才成立。
+#
+# ⚠️ 待模拟器验证（2026-10-22 记）：已上架的 1.0.2 是否已带混淆名写盘 ——
+#    拉一份真实 index.json 看字段名即可判定。若已是混淆名，下个版本
+#    必须附带「旧混淆名 → 明文名」迁移映射，否则升级即丢元数据。
+-keep-property-whitelist
+  app
+  v
+  items
+  id
+  date
+  createdAt
+  mood
+  moodText
+  preview
+  updatedAt
+  words
+  hasImage
+  imgRef
+  favorite
+  tags
+  unlockAt
+  blocks
+  type
+  spans
+  ref
+  text
+  fontWeight
+  fontStyle
+  bold
+  italic
+  meta

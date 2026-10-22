@@ -18,7 +18,7 @@ import { NONCE_LEN, PayloadParts, SALT_LEN, TAG_LEN, VaultFrame, decodeFrame, en
  *    攻击者无法判断两份文件是否同源。
  *  - nonce 每次加密**独立随机**：GCM 下 nonce 复用 = 密钥泄露级别的灾难，绝不复用。
  */
-const DOMAIN: number = 0x0000;
+const DOMAIN: number = 0xD002;
 const TAG: string = 'RockJournal';
 
 export class VaultService {

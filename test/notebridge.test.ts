@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { Block, Span } from '../entry/src/main/ets/data/NoteBlocks';
 import {
-  blocksToLines, blockTypeOfLine, linesToBlocks, markdownTransform, stripPrefix
+  blocksToLines, blockTypeOfLine, linesToBlocks, stripPrefix
 } from '../entry/src/main/ets/data/NoteBridge';
 
 function span(text: string, bold: boolean = false, italic: boolean = false): Span {
@@ -52,12 +52,6 @@ test('块 → 行 → 块 往返：一篇混合日记还原后结构不变', () 
   assert.equal(back[1].type, 'p');
   assert.equal(back[2].type, 'li');
   assert.equal(back[0].spans[0].text, '今天');
-});
-
-test('Markdown 快捷键：输入 # 或 - 的行首触发转换', () => {
-  assert.deepEqual(markdownTransform('#'), { prefix: '# ', rest: '' });
-  assert.deepEqual(markdownTransform('-'), { prefix: '- ', rest: '' });
-  assert.equal(markdownTransform('普通'), null);
 });
 
 test('图片块不回灌进文本行（MVP 阶段），但数据不丢（仍在 JSON）', () => {

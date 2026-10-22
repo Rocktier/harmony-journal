@@ -18,7 +18,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 const STORE_NAME: string = 'privacy';
 const KEY_AGREED: string = 'agreed';
 
-const DOMAIN: number = 0x0000;
+const DOMAIN: number = 0xD002;
 const TAG: string = 'RockJournal';
 
 export class PrivacyPrefs {

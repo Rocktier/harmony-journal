@@ -5,7 +5,7 @@ import { window } from '@kit.ArkUI';
 import { APPEARANCE_DARK, APPEARANCE_LIGHT, AppearanceMode, isDarkMode } from './Appearance';
 import { ThemePalette } from '../theme/ThemePalette';
 
-const DOMAIN: number = 0x0000;
+const DOMAIN: number = 0xD002;
 const TAG: string = 'RockJournal';
 
 /**

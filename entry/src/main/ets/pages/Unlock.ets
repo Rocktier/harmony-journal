@@ -21,7 +21,7 @@ import { ThemePalette } from '../theme/ThemePalette';
  * ⚠️ 主密钥随机生成、只存内存；密码与生物各存一份备份互为兜底。忘密码 ≠ 丢数据（可用生物）。
  * ⚠️ 模拟器 / 无生物设备：生物路径会失败并自动降级主密码，不会卡在解锁页。
  */
-const DOMAIN: number = 0x0000;
+const DOMAIN: number = 0xD002;
 const TAG: string = 'RockJournal';
 
 @Entry
@@ -95,6 +95,22 @@ struct Unlock {
     router.replaceUrl({ url: 'pages/Index' }).catch((e: Error) => {
       hilog.error(DOMAIN, TAG, 'replaceUrl failed: %{public}s', JSON.stringify(e));
     });
+  }
+
+  /** 页面转场（2026-10-22 P0-1 动效包）：与全家族统一的推栈语言（见 Editor.pageTransition） */
+  pageTransition() {
+    PageTransitionEnter({ type: RouteType.Push, duration: 280, curve: Curve.Friction })
+      .translate({ x: 200 })
+      .opacity(0.6)
+    PageTransitionExit({ type: RouteType.Push, duration: 280, curve: Curve.Friction })
+      .translate({ x: -80 })
+      .opacity(0.8)
+    PageTransitionEnter({ type: RouteType.Pop, duration: 280, curve: Curve.Friction })
+      .translate({ x: -80 })
+      .opacity(0.8)
+    PageTransitionExit({ type: RouteType.Pop, duration: 280, curve: Curve.Friction })
+      .translate({ x: 200 })
+      .opacity(0.6)
   }
 
   build() {
