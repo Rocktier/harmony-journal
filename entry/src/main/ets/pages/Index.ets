@@ -1,6 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import { fileUri } from '@kit.CoreFileKit';
-import { router } from '@kit.ArkUI';
+import { curves, router } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 import { DEV_SHOW_BADGE } from '../common/DevFlags';
@@ -85,6 +85,8 @@ struct Index {
    *    响应依赖，reload 换个新 Set 即重渲染。
    */
   @State private favIds: Set<string> = new Set<string>();
+  /** 哪一篇的 ★ 正在跳（收藏脉冲，2026-10-23 复评整改：与 Editor ★ 的 spring 弹跳同语言） */
+  @State private favKickId: string = '';
   /** 有日记的日期（与 heatByDate 同批更新）—— 判"这天写没写过"用它，见 wordsOf */
   @State private markedDates: string[] = [];
   /**
@@ -445,6 +447,13 @@ struct Index {
       hilog.error(DOMAIN, TAG, 'toggleFavorite failed: %{public}s', id);
       return;
     }
+    // 收藏脉冲：跳 320ms（spring 归位）—— 时光轴里点星要有"钤下去"的一拍
+    this.favKickId = id;
+    setTimeout(() => {
+      if (this.favKickId === id) {
+        this.favKickId = '';
+      }
+    }, 320);
     this.reload();
   }
 
@@ -764,6 +773,8 @@ struct Index {
             .onClick(() => {
               this.open(card.meta.date, card.meta.id);
             })
+            // A 类容器伪按钮：整卡可点但读屏无标签（2026-10-23 复评整改）
+            .accessibilityText('那年今日：打开 ' + card.meta.date + ' 的日记')
           }, (card: RecallCard) => card.meta.id)
         }
         .width('100%')
@@ -801,12 +812,21 @@ struct Index {
             .onClick(() => {
               this.open(hit.date, hit.id);
             })
+            // A 类容器伪按钮：搜索结果行整行可点但读屏无标签（2026-10-23 复评整改）
+            .accessibilityText('打开 ' + hit.date + ' 的日记')
           }, (hit: SearchHit) => 'h:' + hit.id)
         }
         .layoutWeight(1)
         .divider({ strokeWidth: 1, color: this.palette.line })
       } else if (this.mode === 'month') {
         // 月视图
+        // ⚠️ 2026-10-23 复评（横屏/矮屏）：整段外包 Scroll —— 顶部双 Row +
+        //    筛选条 + 搜索框 + 月历（最高 300vp）挤在不可滚的父 Column 里，
+        //    横屏矮屏时月历区溢出且无滚动手权（内容不可达 = 功能坏）。
+        //    月历 Grid 自身高度仍按行数固定（月内不滚），整页才滚。
+        //    缩进暂未重排（语法无关，先保正确；整洁化见后续格式化轮）。
+        Scroll() {
+        Column() {
         Row() {
           // 月份切换：圆形 chevron 图标按钮（2026-10-15 替换裸 `<` `>` 字符按钮）
           ChevronButton({
@@ -886,6 +906,10 @@ struct Index {
             .onClick(() => {
               this.open(cell.date);
             })
+            // A 类容器伪按钮（2026-10-23 复评整改）：GridItem 本身不是 Button，
+            // 读屏不报"按钮"也不报哪天 —— 显式补标签（42 格月历全靠它导航）
+            .accessibilityText(cell.date + (cell.isToday ? '，今天' : '')
+              + (this.capsuleDates.includes(cell.date) ? '，有一封没到期的信' : ''))
           }, (cell: MonthCell) => cell.date)
         }
         .columnsTemplate('1fr 1fr 1fr 1fr 1fr 1fr 1fr')
@@ -908,6 +932,9 @@ struct Index {
           }
           .width('100%')
           .margin({ top: RJ_SP_VOID_L })
+        }
+        }
+        .width('100%')
         }
       } else {
         // 时光时间轴（全部，按年月分块，倒序）
@@ -962,6 +989,9 @@ struct Index {
                 this.open(row.meta.date, row.meta.id);
               }
             })
+            // A 类容器伪按钮：时光轴整行可点但读屏无标签（2026-10-23 复评整改）。
+            // 月份头行（meta 为 null）不可点，不给标签
+            .accessibilityText(row.meta !== null ? '打开 ' + row.meta.date + ' 的日记' : row.monthKey)
           }, (row: TimelineRow) => row.key)
         }
         .layoutWeight(1)
@@ -1047,6 +1077,9 @@ struct Index {
             .padding(0)
             .margin({ left: RJ_SP_MD })
             .accessibilityText(this.favIds.has(meta.id) ? '取消收藏' : '收藏这一篇')
+            // 收藏脉冲（2026-10-23 复评整改）：放大 1.3，spring 归位并过冲
+            .scale({ x: this.favKickId === meta.id ? 1.3 : 1.0, y: this.favKickId === meta.id ? 1.3 : 1.0 })
+            .animation({ duration: 320, curve: curves.springMotion(0.3, 0.7) })
             .onClick(() => {
               this.toggleFavorite(meta.id);
             })
@@ -1107,5 +1140,10 @@ struct Index {
     }
     .width('100%')
     .padding({ top: RJ_SP_LG, bottom: RJ_SP_LG })
+    // 行的进出过渡（2026-10-23 复评整改）：新增/删除的日记淡入淡出+轻位移，
+    // 不再是瞬现瞬消失（插入才播；reload 的全量重画不播，见 TimelineDataSource）
+    .transition(TransitionEffect.OPACITY
+      .combine(TransitionEffect.translate({ y: 8 }))
+      .animation({ duration: 200, curve: Curve.EaseOut }))
   }
 }

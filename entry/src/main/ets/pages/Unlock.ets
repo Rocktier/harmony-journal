@@ -130,6 +130,11 @@ struct Unlock {
   /** 解锁表单（隐私门通过后才渲染） */
   @Builder
   private unlockForm() {
+    // ⚠️ 2026-10-23 复评（横屏/矮屏）：外包 Scroll —— 原不可滚容器在横屏矮屏下
+    //    把「同意并继续」挤出屏幕底部且无任何滚动途径（内容不可达 = 功能坏）。
+    //    代价：Blank 的压底语义在 Scroll 内不再生效（信任锚贴在内容下方）——
+    //    可用性优先于竖屏压底美学。缩进暂未重排（语法无关，先保正确）。
+    Scroll() {
     Column() {
       /**
        * 钤印方章（2026-10-13「纸与印」Phase 22）—— **Rock私记 的脸**。
@@ -249,9 +254,11 @@ struct Unlock {
         .margin({ bottom: RJ_SP_VOID })
     }
     .width('100%')
+    .padding({ bottom: RJ_SP_VOID })
+    }
+    .width('100%')
     .height('100%')
     .backgroundColor(this.palette.bg)
-    .justifyContent(FlexAlign.Start)
   }
 
   /**

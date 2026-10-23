@@ -796,6 +796,68 @@ export function capsuleBadge(meta: NoteMeta, nowMs: number): string {
  * 未到期胶囊**不计**（否则从数字大小能反推信写了多长，封存纪律在统计侧的对应物）；
  * 已解锁胶囊恢复正常计量。
  */
+/** 月度字数桶（统计页柱状图用；纯数据，可单测） */
+export interface MonthWords {
+  /** 'yyyy-MM' */
+  month: string;
+  words: number;
+}
+
+/**
+ * 心情分布（纯逻辑，可单测）：按 MOODS 顺序给每种心情一个计数桶。
+ * 自定义心情并入 'custom' 桶；无心情的篇目不计（不凑数）。
+ * 锁定态胶囊计入 mood 桶（心情是封存字段之外的吗？—— 不，保存时 mood 也封存为 ''，
+ * 所以锁定胶囊自然落不到任何桶里，无需额外过滤）。
+ */
+export function moodCounts(metas: NoteMeta[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (let i: number = 0; i < MOODS.length; i++) {
+    out[MOODS[i].id] = 0;
+  }
+  out[MOOD_CUSTOM_ID] = 0;
+  for (let i: number = 0; i < metas.length; i++) {
+    const m: string = metas[i].mood;
+    if (m.length === 0) {
+      continue;
+    }
+    if (out[m] === undefined) {
+      out[m] = 0;
+    }
+    out[m] += 1;
+  }
+  return out;
+}
+
+/**
+ * 近 N 个月的每月字数（纯逻辑，可单测；含当月，**按时间正序**返回——
+ * 最早的在前、当月压轴：统计页柱状图从左到右 = 从过去到现在）。
+ *
+ * ⚠️ 封存纪律：未到期胶囊的 words **不计入**（ countsForStats 同款过滤）——
+ *    统计页一个「本月 800 字」就能剧透"锁着的那封信写了多长"。
+ * ⚠️ 空月份补 0：图表要连续时间轴，断月会被误读成"没数据"而不是"没写"。
+ *
+ * @param nowMs 当前时刻（毫秒），用于胶囊到期判定
+ */
+export function monthlyWords(metas: NoteMeta[], nowKey: string, months: number, nowMs: number): MonthWords[] {
+  const buckets: Record<string, number> = {};
+  for (let i: number = 0; i < metas.length; i++) {
+    if (!countsForStats(metas[i], nowMs)) {
+      continue;
+    }
+    const mk: string = metas[i].date.substring(0, 7);
+    buckets[mk] = (buckets[mk] === undefined ? 0 : buckets[mk]) + metas[i].words;
+  }
+  const out: MonthWords[] = [];
+  // 从 N-1 个月前出发逐月推进到当月 ⇒ out[0] 最早、out[N-1] 是当月
+  let cursor: string = shiftMonth(nowKey.substring(0, 7), -(months - 1));
+  for (let i: number = 0; i < months; i++) {
+    out.push({ month: cursor, words: buckets[cursor] === undefined ? 0 : buckets[cursor] });
+    cursor = shiftMonth(cursor, 1);
+  }
+  return out;
+}
+
+/** 这篇是否计入统计（纯逻辑）：非胶囊一律计；锁定态胶囊不计（防剧透，见 monthlyWords） */
 export function countsForStats(meta: NoteMeta, nowMs: number): boolean {
   if (!isCapsule(meta)) {
     return true;

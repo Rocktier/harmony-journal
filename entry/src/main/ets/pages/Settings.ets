@@ -95,9 +95,11 @@ struct Settings {
    *
    * ⚠️ 原来是 `Text(...).onClick` **伪按钮** —— 没有按压反馈、读屏不报"按钮"、无法聚焦，
    * 这是 A 类无障碍问题（AGC 会查）。整行可点也比只点那一小条文字好按得多。
+   *
+   * @param value 右侧概览值（空串 = 不显示；等宽小字，与 › 同级）
    */
   @Builder
-  private settingRow(label: string, onTap: () => void) {
+  private settingRow(label: string, value: string, onTap: () => void) {
     Row() {
       // ⚠️ Button 没有 justifyContent 属性 —— 想左对齐就得用 content 形式放 Text
       Button({ type: ButtonType.Normal, stateEffect: true }) {
@@ -110,10 +112,16 @@ struct Settings {
       .backgroundColor(Color.Transparent)
       .height(44)
       .layoutWeight(1)
-      .accessibilityText(label)
+      .accessibilityText(value.length > 0 ? label + '，' + value : label)
       .onClick(() => {
         onTap();
       })
+      if (value.length > 0) {
+        Text(value)
+          .fontSize(RJ_FS_CAPTION)
+          .fontFamily('monospace')
+          .fontColor(this.palette.text3)
+      }
       Text('›')
         .fontSize(RJ_FS_CALLOUT)
         .fontColor(this.palette.text3)
@@ -318,20 +326,20 @@ struct Settings {
         .width('100%')
         .padding({ left: RJ_SP_XXL, bottom: RJ_SP_MD })
 
-      this.settingRow('导出加密备份', () => {
+      this.settingRow('导出加密备份', '', () => {
         this.doExport();
       })
 
-      this.settingRow('从备份导入', () => {
+      this.settingRow('从备份导入', '', () => {
         this.doImport();
       })
 
       // 可读导出（数据自主：不把用户锁死在本 App 里）
-      this.settingRow('导出为文本 TXT', () => {
+      this.settingRow('导出为文本 TXT', '', () => {
         this.doExportReadable(false);
       })
 
-      this.settingRow('导出为 Markdown', () => {
+      this.settingRow('导出为 Markdown', '', () => {
         this.doExportReadable(true);
       })
 
@@ -369,7 +377,10 @@ struct Settings {
           .padding({ left: RJ_SP_XXL, top: RJ_SP_SM, bottom: RJ_SP_XL })
       }
 
-      // 统计（Diarium 的 diary statistics 同款；全部从内存索引算，零 IO）
+      // 统计（2026-10-23 复评 wow-point）：原先是三行静态文本，现在收口成
+      // **统计页入口** —— 篇数/天数/连续只是总览，月度柱状 + 心情分布才是
+      // 「数据只在这台设备上」这句承诺的可见形态（RockStats 头注）。
+      // 右侧概览值让入口本身有信息量，不用点进去也知道个大概。
       Text('统计')
         .fontSize(RJ_FS_META)
         .fontFamily('monospace')
@@ -377,44 +388,11 @@ struct Settings {
         .width('100%')
         .padding({ left: RJ_SP_XXL, bottom: RJ_SP_MD })
 
-      Row() {
-        Text('写过日记的天数')
-          .fontSize(RJ_FS_CALLOUT)
-          .fontColor(this.palette.text)
-        Blank()
-        Text(this.stats.days + ' 天')
-          .fontSize(RJ_FS_CAPTION)
-          .fontFamily('monospace')
-          .fontColor(this.palette.text3)
-      }
-      .width('100%')
-      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
-
-      Row() {
-        Text('累计字数')
-          .fontSize(RJ_FS_CALLOUT)
-          .fontColor(this.palette.text)
-        Blank()
-        Text(this.stats.words + ' 字')
-          .fontSize(RJ_FS_CAPTION)
-          .fontFamily('monospace')
-          .fontColor(this.palette.text3)
-      }
-      .width('100%')
-      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
-
-      Row() {
-        Text('最长连续')
-          .fontSize(RJ_FS_CALLOUT)
-          .fontColor(this.palette.text)
-        Blank()
-        Text(this.stats.longest + ' 天')
-          .fontSize(RJ_FS_CAPTION)
-          .fontFamily('monospace')
-          .fontColor(this.palette.text3)
-      }
-      .width('100%')
-      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_LG, bottom: RJ_SP_LG })
+      this.settingRow('日记统计',
+        '共 ' + this.stats.total + ' 篇 · ' + this.stats.days + ' 天',
+        () => {
+          router.pushUrl({ url: 'pages/RockStats' });
+        })
 
       // 关于
       Text('关于')
@@ -424,7 +402,7 @@ struct Settings {
         .width('100%')
         .padding({ left: RJ_SP_XXL, bottom: RJ_SP_MD })
 
-      this.settingRow('隐私政策', () => {
+      this.settingRow('隐私政策', '', () => {
         router.pushUrl({ url: 'pages/Privacy' });
       })
 

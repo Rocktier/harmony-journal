@@ -1027,6 +1027,8 @@ struct Editor {
           .fontColor(this.palette.text)
           .backgroundColor(Color.Transparent)
           .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_SM, bottom: RJ_SP_SM })
+          // B/I 是字形按钮，读屏念"B"不知所以 —— 显式补语义（2026-10-23 复评整改）
+          .accessibilityText('加粗')
           .onClick(() => {
             this.setSpanStyle(true, false);
           })
@@ -1036,6 +1038,7 @@ struct Editor {
           .fontColor(this.palette.text)
           .backgroundColor(Color.Transparent)
           .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_SM, bottom: RJ_SP_SM })
+          .accessibilityText('斜体')
           .onClick(() => {
             this.setSpanStyle(false, true);
           })

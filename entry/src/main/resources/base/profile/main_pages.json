@@ -5,6 +5,7 @@
     "pages/Editor",
     "pages/Capsule",
     "pages/Settings",
+    "pages/RockStats",
     "pages/Privacy"
   ]
 }
