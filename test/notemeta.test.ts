@@ -330,6 +330,10 @@ test('备份提醒：没日记不打扰 / 从未备份要提醒 / 到期才提�
   assert.equal(needsBackupReminder(now - 31 * day, now, true, 30), true);
   assert.equal(daysSinceMs(now - 5 * day, now), 5);
   assert.equal(daysSinceMs(0, now), -1);
+  // 2026-10-23 复评：时间异常从 -1 拆出为 -2（设置页要把"系统时间被改过"
+  // 和"从未备份过"分开说，旧版两种都显示"从未备份过"是对用户的谎报）
+  assert.equal(daysSinceMs(now + day, now), -2);
+  assert.equal(daysSinceMs(now, now), -2);
 });
 
 test('日历行数：按当月实际需要（不固定 6 行）', () => {

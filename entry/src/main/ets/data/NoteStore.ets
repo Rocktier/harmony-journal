@@ -3,10 +3,10 @@ import { util } from '@kit.ArkTS';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
-import { Block, blocksToJson, jsonToBlocks, wordCountOf } from './NoteBlocks';
-import { NoteMeta, isValidDateKey, newNoteId, previewText } from './NoteMeta';
+import { Block, blocksToJson, firstImgRef, jsonToBlocks, plainOfBlocks, wordCountOf } from './NoteBlocks';
+import { NoteMeta, PREVIEW_LEN, newNoteId, previewText } from './NoteMeta';
 import { encodeIndex, parseIndexStrict, sanitizeTags, sortEntries } from './IndexCodec';
-import { BackupItem } from './BackupService';
+import { BackupItem, PlannedNote, planImport } from './BackupService';
 import { VaultService } from './VaultService';
 
 /**
@@ -28,8 +28,6 @@ const NOTES_DIR: string = 'notes';
 const INDEX_FILE: string = 'index.rkd';
 /** 记录最近一次导出时刻的小文件（**不含日记内容**，只存一个时间戳） */
 const BACKUP_MARK: string = 'last_backup';
-/** 摘要长度（列表/时间轴一行显示得下的量；存进索引，避免渲染时再解密） */
-const PREVIEW_LEN: number = 42;
 
 export class NoteStore {
   private root: string = '';
@@ -182,12 +180,7 @@ export class NoteStore {
       if (entryId.length === 0) {
         entryId = this.newEntryId();
       }
-      const json: string = blocksToJson(blocks);
-      const enc: Uint8Array | null = this.vault.encrypt(this.utf8(json));
-      if (enc === null) {
-        return false;
-      }
-      if (!this.writeFileAtomic(this.notePath(entryId), enc)) {
+      if (!this.writeEntryBody(entryId, blocks)) {
         return false;
       }
       const prev: NoteMeta | null = this.byId(entryId);
@@ -201,11 +194,11 @@ export class NoteStore {
         createdAt: prev !== null ? prev.createdAt : now,
         mood: sealed ? '' : mood,
         moodText: sealed ? '' : moodText,
-        preview: sealed ? '' : previewText(this.plainOfBlocks(blocks), PREVIEW_LEN),
+        preview: sealed ? '' : previewText(plainOfBlocks(blocks), PREVIEW_LEN),
         updatedAt: now,
         words: wordCountOf(blocks),
         hasImage: sealed ? false : blocks.some((b: Block) => b.type === 'img'),
-        imgRef: sealed ? '' : this.firstImgRef(blocks),
+        imgRef: sealed ? '' : firstImgRef(blocks),
         favorite: favorite,
         tags: sealed ? [] : sanitizeTags(tags),
         unlockAt: unlockAt
@@ -248,7 +241,7 @@ export class NoteStore {
 
   /** 某篇的纯文本（解密 + 块→文本；不存在/解不开 → 空串） */
   textOf(id: string): string {
-    return this.plainOfBlocks(this.readEntry(id));
+    return plainOfBlocks(this.readEntry(id));
   }
 
   /**
@@ -294,30 +287,6 @@ export class NoteStore {
     } catch (e) {
       return 0;
     }
-  }
-
-  /** 第一张图片的 ref（时间轴缩略图用；没有图返回空串） */
-  private firstImgRef(blocks: Block[]): string {
-    for (let i: number = 0; i < blocks.length; i++) {
-      if (blocks[i].type === 'img' && blocks[i].ref.length > 0) {
-        return blocks[i].ref;
-      }
-    }
-    return '';
-  }
-
-  /** 块 → 纯文本（块间换行；图片块没有文本，自然被跳过） */
-  private plainOfBlocks(blocks: Block[]): string {
-    const lines: string[] = [];
-    for (let i: number = 0; i < blocks.length; i++) {
-      const b: Block = blocks[i];
-      let line: string = '';
-      for (let j: number = 0; j < b.spans.length; j++) {
-        line = line + b.spans[j].text;
-      }
-      lines.push(line);
-    }
-    return lines.join('\n');
   }
 
   /** 按 id 取元数据 */
@@ -413,23 +382,36 @@ export class NoteStore {
    * ⚠️ 原来按 date 落盘，同一天第二篇会把第一篇**静默顶掉** ——
    * 现在改为：id 已存在 ⇒ 换一个新 id 追加，**宁可多一篇也不丢一篇**。
    * 全新设备/空库导入时不会撞号 ⇒ 依然是原样恢复。
+   *
+   * ⚠️ 2026-10-23 复评（P0 级）：旧实现逐篇调 saveEntry ⇒ N 次全量索引
+   * 重写+加密+原子写（O(N²)），几百篇的备份今天就能卡到用户。
+   * 现改为「planImport 纯规划（语义进 CI）→ 逐篇只写正文密文 →
+   * 索引**一次**合并落盘」。
+   *
+   * @returns >=0 = 成功导入篇数；-1 = 索引落盘失败（内存已回滚，
+   *   磁盘上可能留下孤儿正文文件 —— 无害：下次导入同备份会按 id 重写它）
    */
   importAll(items: BackupItem[]): number {
+    const plan: PlannedNote[] = planImport(this.index, items, Date.now());
+    const before: NoteMeta[] = this.index; // concat 产出新数组 ⇒ 引用快照即回滚点
+    const metas: NoteMeta[] = [];
     let n: number = 0;
-    for (let i: number = 0; i < items.length; i++) {
-      const it: BackupItem = items[i];
-      if (!isValidDateKey(it.date)) {
+    for (let i: number = 0; i < plan.length; i++) {
+      if (!this.writeEntryBody(plan[i].id, plan[i].blocks)) {
+        hilog.error(DOMAIN, TAG, 'importAll: body write failed, skip %{public}s', plan[i].id);
         continue;
       }
-      let id: string = typeof it.meta.id === 'string' && it.meta.id.length > 0 ? it.meta.id : it.date;
-      if (this.byId(id) !== null) {
-        id = this.newEntryId();
-      }
-      // 老备份（1.0.1 及以前）的 meta 没有 unlockAt ⇒ undefined ⇒ 当普通日记恢复
-      const savedUnlockAt: number = typeof it.meta.unlockAt === 'number' ? it.meta.unlockAt : 0;
-      if (this.saveEntry(id, it.date, it.blocks, it.meta.mood, it.meta.moodText, it.meta.favorite, it.meta.tags, savedUnlockAt)) {
-        n++;
-      }
+      metas.push(plan[i].meta);
+      n++;
+    }
+    if (metas.length === 0) {
+      return n; // 0 = 没有可导入的（date 全非法，或正文全写失败）
+    }
+    this.index = sortEntries(this.index.concat(metas));
+    if (!this.saveIndex()) {
+      this.index = before;
+      hilog.error(DOMAIN, TAG, 'importAll: index flush failed, rolled back memory');
+      return -1;
     }
     return n;
   }
@@ -439,6 +421,21 @@ export class NoteStore {
     this.index.push(meta);
     // ⚠️ 插入/更新会让顺序失效；`newestOfDate` 依赖"第一个命中即最新"，所以这里必须重排。
     this.index = sortEntries(this.index);
+  }
+
+  /**
+   * 只写正文密文（**不碰索引**）—— saveEntry 与 importAll 共用。
+   *
+   * 2026-10-23 复评的 O(N²) 修复拆出来的：导入时索引只在最后写一次，
+   * 逐篇走这里只付「一篇的加密 + 原子写」，不再每篇拖着全索引陪跑。
+   */
+  private writeEntryBody(entryId: string, blocks: Block[]): boolean {
+    const json: string = blocksToJson(blocks);
+    const enc: Uint8Array | null = this.vault.encrypt(this.utf8(json));
+    if (enc === null) {
+      return false;
+    }
+    return this.writeFileAtomic(this.notePath(entryId), enc);
   }
 
   /**

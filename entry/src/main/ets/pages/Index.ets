@@ -913,7 +913,8 @@ struct Index {
         // 时光时间轴（全部，按年月分块，倒序）
         if (!this.loaded || this.metas.length === 0) {
           Column() {
-            // ⏳ !loaded = 还在读索引（300ms bootstrap 兜底）：显示骨架占位而不是"还没有日记"
+            // ⏳ !loaded = reload() 还没跑完（loaded 在 reload 末尾**同步**置 true，
+            //    正常不可见；只有极端慢盘会闪一两帧）：显示骨架占位而不是"还没有日记"
             //    （否则冷启动先闪一帧空态再闪数据，空态说谎——P1-2/P1-1，2026-10-22 整改）
             if (!this.loaded) {
               Text('···')

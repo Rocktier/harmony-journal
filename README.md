@@ -9,12 +9,12 @@
 ## 构建与测试
 
 ```bash
-# 纯逻辑单测（不依赖鸿蒙 SDK）
+# 纯逻辑单测（130 个用例，不依赖鸿蒙 SDK）
 npm install && npm test
 
 # CI：GitHub Actions（build.yml）—— 编译校验 + 单测，tag v* 触发发 Release
 # 正式签名包：签名已就位（rockreader-v2.p12 共用 + rockjournal-v1.p7b），
-# 1.0.2 已通过 AGC 审核上架（2026-10）；本机 default/release product 产出（见 build-profile.json5 注释）
+# 1.0.3 已提交 AGC 审核（2026-10，审核中）；本机 default/release product 产出（见 build-profile.json5 注释）
 ```
 
 ## 图标

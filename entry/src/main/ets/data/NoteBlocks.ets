@@ -269,3 +269,33 @@ interface RootHolder {
   v?: number;
   blocks?: Block[];
 }
+
+/**
+ * 块数组 → 纯文本（块间换行；图片块没有文本，自然被跳过）
+ *
+ * 从 NoteStore 抽为公开纯函数（2026-10-23）：批量导入规划 `planImport` 要算
+ * preview，而它不能依赖 NoteStore —— 那是 IO 层，单测环境跑不动。
+ * **唯一真源**：NoteStore 自己也不再留私有副本，两边都走这里。
+ */
+export function plainOfBlocks(blocks: Block[]): string {
+  const lines: string[] = [];
+  for (let i: number = 0; i < blocks.length; i++) {
+    const b: Block = blocks[i];
+    let line: string = '';
+    for (let j: number = 0; j < b.spans.length; j++) {
+      line = line + b.spans[j].text;
+    }
+    lines.push(line);
+  }
+  return lines.join('\n');
+}
+
+/** 第一张图片的 ref（时间轴缩略图用；没有图返回空串）—— 同上，抽自 NoteStore */
+export function firstImgRef(blocks: Block[]): string {
+  for (let i: number = 0; i < blocks.length; i++) {
+    if (blocks[i].type === 'img' && blocks[i].ref.length > 0) {
+      return blocks[i].ref;
+    }
+  }
+  return '';
+}

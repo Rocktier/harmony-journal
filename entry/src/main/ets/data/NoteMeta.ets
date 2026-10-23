@@ -448,6 +448,14 @@ export function timelineRows(metas: NoteMeta[], nowMs: number = 0): TimelineRow[
   return rows;
 }
 
+/**
+ * 列表/时间轴摘要长度（一行显示得下的量；存进索引，避免渲染时再解密正文）
+ *
+ * 从 NoteStore 抽为公开常量（2026-10-23）：`planImport` 与 NoteStore 共用，
+ * 不许两边各写一个 42。
+ */
+export const PREVIEW_LEN: number = 42;
+
 /** 摘要：折叠空白 → 按**字符**截断 → 超长补 `…`（emoji 安全） */
 export function previewText(text: string, maxChars: number): string {
   if (maxChars <= 0) {
@@ -565,10 +573,18 @@ export function computeStats(metas: NoteMeta[], today: string, nowMs: number = 0
  *
  * ⚠️ 为什么需要"备份提醒"：备份是生命线，但**人不会记得点**。
  * 真实用户往往在丢数据之后才想起这件事 ⇒ 到期就提醒一次（不自动写文件、不打扰）。
+ *
+ * 返回值：>=0 = 正常天数；-1 = 从未备份；-2 = 时间异常。
  */
 export function daysSinceMs(ts: number, nowMs: number): number {
-  if (ts <= 0 || nowMs <= ts) {
-    return -1; // 从未备份 / 时间异常
+  if (ts <= 0) {
+    return -1; // 从未备份
+  }
+  if (nowMs <= ts) {
+    // 时间异常：备份时刻在未来 —— 系统时间被改到过去，或 last_backup 损坏。
+    // 2026-10-23 复评从 -1 拆出：旧版把两种完全不同的情况共用一个返回值，
+    // 设置页于是把"时间异常"也显示成"还从未备份过"——那是**对用户的谎报**。
+    return -2;
   }
   return Math.floor((nowMs - ts) / 86400000);
 }
@@ -580,7 +596,7 @@ export function needsBackupReminder(lastBackupAt: number, nowMs: number, hasNote
   }
   const d: number = daysSinceMs(lastBackupAt, nowMs);
   if (d < 0) {
-    return true; // 从未备份过 ⇒ 一定要提醒
+    return true; // 从未备份（-1）或时间异常（-2）⇒ 都要提醒
   }
   return d >= thresholdDays;
 }

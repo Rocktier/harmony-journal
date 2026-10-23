@@ -5,6 +5,7 @@ import './notemeta.test.ts';
 import './capsule.test.ts';
 import './notebridge.test.ts';
 import './backup.test.ts';
+import './importplan.test.ts';
 import './indexcodec.test.ts';
 import './appearance.test.ts';
 import './palette.test.ts';

@@ -9,8 +9,8 @@
  * 备份是离线日记唯一的事后悔药（手机丢了/坏了/换机），
  * 所以格式宁可笨一点也要稳：一层 JSON + 一层加密，十年后仍能解释。
  */
-import { Block, Span, jsonToBlocks, blocksToJson } from './NoteBlocks';
-import { NoteMeta, isValidDateKey, isValidNoteId, moodById } from './NoteMeta';
+import { Block, Span, firstImgRef, jsonToBlocks, blocksToJson, plainOfBlocks, wordCountOf } from './NoteBlocks';
+import { NoteMeta, PREVIEW_LEN, isValidDateKey, isValidNoteId, moodById, newNoteId, previewText } from './NoteMeta';
 import { sanitizeTags } from './IndexCodec';
 
 export const BACKUP_APP: string = 'rockjournal';
@@ -258,4 +258,73 @@ interface BackupHolder {
   app?: string;
   v?: number;
   items?: BackupItem[];
+}
+
+/**
+ * 批量导入规划（**纯逻辑，无 IO，可单测** —— 2026-10-23 复评新增）
+ *
+ * 背景：NoteStore.importAll 原来逐篇调 saveEntry，而 saveEntry 每篇结尾都
+ * 全量重写 + 加密 + 原子写**整个索引** ⇒ N 篇 = N 次全量写（O(N²)）。
+ * 这不是"十年后一万篇"的远期问题 —— 几百篇的备份今天就能卡到用户。
+ *
+ * 修法是把「决策」与「IO」分离：
+ *  ① 本函数在内存里完成 id 分配 + 元数据构造（纯函数 ⇒ 语义进 CI 守着）；
+ *  ② NoteStore.importAll 只逐篇写正文密文 + **一次** saveIndex（IO 结构肉眼可审）。
+ *
+ * 语义与旧逐篇版逐字一致（不许悄悄改行为）：
+ *  - date 非法 ⇒ 跳过；
+ *  - id 与现有索引冲突 ⇒ 换新 id（**宁可多一篇也不丢一篇**，绝不静默顶掉）；
+ *  - 胶囊（unlockAt > 0）⇒ mood/moodText/preview/hasImage/imgRef/tags 一律封存
+ *    （索引整块可读，任何内容字段漏进索引，锁就形同虚设）；
+ *  - createdAt/updatedAt 取注入的 now —— 对齐旧 saveEntry 对新篇目的行为
+ *    （prev 不存在 ⇒ now；备份里的原时间戳不保留，与旧行为一致）。
+ */
+export interface PlannedNote {
+  /** 要落的正文 id（与现有冲突时已换成新号） */
+  id: string;
+  blocks: Block[];
+  meta: NoteMeta;
+}
+
+export function planImport(existing: NoteMeta[], items: BackupItem[], now: number): PlannedNote[] {
+  const taken: Set<string> = new Set<string>();
+  for (let i: number = 0; i < existing.length; i++) {
+    taken.add(existing[i].id);
+  }
+  const out: PlannedNote[] = [];
+  for (let i: number = 0; i < items.length; i++) {
+    const it: BackupItem = items[i];
+    if (!isValidDateKey(it.date)) {
+      continue;
+    }
+    // 老备份（1.0.1 及以前）的 meta 没有 id ⇒ 回退用 date（老条目 id 本就等于 date）
+    let id: string = typeof it.meta.id === 'string' && it.meta.id.length > 0 ? it.meta.id : it.date;
+    if (taken.has(id)) {
+      id = newNoteId(taken);
+    }
+    taken.add(id);
+    // 老备份的 meta 没有 unlockAt ⇒ undefined ⇒ 当普通日记恢复
+    const savedUnlockAt: number = typeof it.meta.unlockAt === 'number' ? it.meta.unlockAt : 0;
+    const sealed: boolean = savedUnlockAt > 0;
+    out.push({
+      id: id,
+      blocks: it.blocks,
+      meta: {
+        id: id,
+        date: it.date,
+        createdAt: now,
+        mood: sealed ? '' : it.meta.mood,
+        moodText: sealed ? '' : it.meta.moodText,
+        preview: sealed ? '' : previewText(plainOfBlocks(it.blocks), PREVIEW_LEN),
+        updatedAt: now,
+        words: wordCountOf(it.blocks),
+        hasImage: sealed ? false : it.blocks.some((b: Block) => b.type === 'img'),
+        imgRef: sealed ? '' : firstImgRef(it.blocks),
+        favorite: it.meta.favorite,
+        tags: sealed ? [] : sanitizeTags(it.meta.tags),
+        unlockAt: savedUnlockAt
+      }
+    });
+  }
+  return out;
 }

@@ -349,10 +349,14 @@ struct Settings {
         .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_LG })
 
       // 到期提醒三态：正常（text3）→ 到期（text2 + 催促文案）；红色纪律只给"错了"，这里不碰
+      // ⚠️ 2026-10-23 复评：-2 = 时间异常（系统时间被改过 / last_backup 损坏）必须与
+      //    -1 = 从未备份分开说 —— 旧版把时间异常也显示成"还从未备份过"，是对用户的谎报。
       if (this.backupDue) {
         Text(this.backupDays >= 0
           ? '共 ' + this.noteCount + ' 篇 · 距上次备份 ' + this.backupDays + ' 天了，记得导出一份'
-          : '共 ' + this.noteCount + ' 篇 · 还从未备份过，记得导出一份')
+          : (this.backupDays === -2
+            ? '共 ' + this.noteCount + ' 篇 · 备份时间异常（系统时间被改过？），建议重新导出'
+            : '共 ' + this.noteCount + ' 篇 · 还从未备份过，记得导出一份'))
           .fontSize(RJ_FS_META)
           .fontColor(this.palette.text2)
           .width('100%')

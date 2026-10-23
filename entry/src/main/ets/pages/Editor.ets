@@ -1219,7 +1219,8 @@ struct Editor {
           .fontFamily('monospace')
           .fontColor(this.palette.text3)
           .opacity(this.saved ? 0.7 : 0.4)
-          // 保存脉冲：saveFlash 置 true 的瞬间放大 1.06，spring 归位（P0-1）
+          // 保存脉冲：saveFlash 置 true 的瞬间放大 1.06，EaseOut 220ms 归位（P0-1）
+          // （与 ★ 弹跳的 spring 刻意区分：保存要"稳"，收藏要"弹"）
           .scale({ x: this.saveFlash ? 1.06 : 1.0, y: this.saveFlash ? 1.06 : 1.0 })
           .animation({ duration: 220, curve: Curve.EaseOut })
       }
