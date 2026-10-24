@@ -675,10 +675,22 @@ struct Index {
 
       // 筛选条：数据全在索引里 ⇒ 零 IO 成本；几百篇之后这是"还能不能用"的分界线
       Row() {
-        this.chip('★ 收藏', this.onlyFavorite, () => {
-          this.onlyFavorite = !this.onlyFavorite;
-          this.refreshData();
-        })
+        // ⚠️ 收藏 chip 走 **if 分支**而不是直接把 @State 当参数传（2026-10-25 实测）：
+        //    直接 `this.chip('★ 收藏', this.onlyFavorite, ...)` 时，点了收藏
+        //    **列表筛了、chip 却不变色** —— @Builder 的值参数没跟着 @State 重跑
+        //    （同一行里 ForEach 里的心情 chip 因 key 带 :on 会重建，所以它是好的）。
+        //    拆成 if/else ⇒ 选中态变化时整段重建 ⇒ 高亮一定跟上。
+        if (this.onlyFavorite) {
+          this.chip('★ 收藏', true, () => {
+            this.onlyFavorite = !this.onlyFavorite;
+            this.refreshData();
+          })
+        } else {
+          this.chip('★ 收藏', false, () => {
+            this.onlyFavorite = !this.onlyFavorite;
+            this.refreshData();
+          })
+        }
         ForEach(MOODS, (m: Mood) => {
           this.chip(m.emoji, this.filterMood === m.id, () => {
             this.filterMood = this.filterMood === m.id ? '' : m.id;
