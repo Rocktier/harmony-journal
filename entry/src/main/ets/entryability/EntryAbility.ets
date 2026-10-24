@@ -1,8 +1,9 @@
-import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
+import { AbilityConstant, Configuration, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 
-import { applyAppearanceAtStartup } from '../common/AppearanceApply';
+import { APPEARANCE_SYSTEM } from '../common/Appearance';
+import { applyAppearanceAtStartup, applyPaletteMode } from '../common/AppearanceApply';
 import { AppearancePrefs } from '../data/AppearancePrefs';
 import { bootstrap } from '../data/NoteStoreHolder';
 
@@ -77,6 +78,29 @@ export default class EntryAbility extends UIAbility {
 
   onWindowStageDestroy(): void {
     hilog.info(DOMAIN, TAG, 'onWindowStageDestroy');
+  }
+
+  /**
+   * 系统深浅变了（用户在控制中心切了深色）。
+   *
+   * 只在用户选了**跟随系统**时才动色板 —— 显式选了深/浅的人不该被系统覆盖。
+   * 走 `applyPaletteMode`（换 AppStorage 里的 palette 对象）而不是 `setColorMode`：
+   * 后者会重建 UIContent、页面栈保不住（2026-10-16 实测：切完直接退回桌面）。
+   */
+  onConfigurationUpdate(newConfig: Configuration): void {
+    // ⚠️ 不调 super：UIAbility 基类未实现该方法，ArkTS 能编译但运行时抛错，
+    //    实测（2026-10-25）表现为应用窗口存在但内容全空（黑屏）。
+    try {
+      const prefs: AppearancePrefs = new AppearancePrefs();
+      prefs.open(this.context);
+      if (prefs.get() !== APPEARANCE_SYSTEM) {
+        return;
+      }
+      applyPaletteMode(this.context, APPEARANCE_SYSTEM);
+      hilog.info(DOMAIN, TAG, 'appearance follows system, colorMode=%{public}d', newConfig.colorMode);
+    } catch (e) {
+      hilog.warn(DOMAIN, TAG, 'follow system failed: %{public}s', JSON.stringify(e));
+    }
   }
 
   onForeground(): void {

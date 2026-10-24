@@ -50,6 +50,27 @@ export function isDarkMode(mode: AppearanceMode): boolean | null {
 }
 
 /**
+ * 结合「用户意图」与「系统当前深浅」解出**该用哪套色板**（2026-10-25 华为反馈修复）。
+ *
+ * 为什么必须有它：之前直接用 `isDarkMode(mode) === true` 定色板，而
+ * `isDarkMode('system')` 返回 **null** ⇒ `null === true` 为 **false**
+ * ⇒ **跟随系统时色板恒为浅色**，系统切深色应用毫无反应（审核员实测：
+ * 「设置-深浅跟随系统无变化」）。
+ *
+ * 纯逻辑：系统深浅由调用方（`AppearanceApply` 读 `ctx.config.colorMode`）传入，
+ * 本函数不碰设备 API ⇒ CI 可测。
+ */
+export function resolveDark(mode: AppearanceMode, systemDark: boolean): boolean {
+  if (mode === APPEARANCE_DARK) {
+    return true;
+  }
+  if (mode === APPEARANCE_LIGHT) {
+    return false;
+  }
+  return systemDark;
+}
+
+/**
  * 点一下切到哪一档（编辑器那个快捷按钮用）。
  *
  * 顺序：跟随系统 → 深色 → 浅色 → 跟随系统。

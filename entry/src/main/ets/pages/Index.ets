@@ -256,12 +256,20 @@ struct Index {
    */
   @Builder
   private chip(label: string, active: boolean, onTap: () => void) {
+    // ⚠️ 选中态必须一眼可见（2026-10-25 华为反馈：「收藏/心情筛选没有高亮变化」）。
+    //    原写法是 g100(#E3E6E8) vs card(#FFF) —— 浅灰 vs 白，在真机上几乎看不出差别。
+    //    改成本家族既有的「选中 = 墨底反白」（与外观 chip 选中态同一语言）：
+    //    墨色 accent 底 + 反白字 + 加粗，未选中仍是纸面底 + 次级字色。
     Button(label, { type: ButtonType.Normal, stateEffect: true })
       .fontSize(RJ_FS_CAPTION)
-      .fontColor(active ? this.palette.text : this.palette.text3)
-      .backgroundColor(active ? this.palette.g100 : this.palette.card)
+      .fontColor(active ? this.palette.bg : this.palette.text3)
+      .fontWeight(active ? FontWeight.Bold : FontWeight.Normal)
+      .backgroundColor(active ? this.palette.accent : this.palette.card)
+      .border({ width: active ? 0 : 1, color: this.palette.line })
+      .borderRadius(RJ_RADIUS_MD)
       .padding({ left: RJ_SP_LG, right: RJ_SP_LG, top: RJ_SP_SM, bottom: RJ_SP_SM })
       .margin({ right: RJ_SP_MD })
+      .accessibilityText(label + (active ? '，已选中' : ''))
       .onClick(() => {
         onTap();
       })
@@ -676,7 +684,9 @@ struct Index {
             this.filterMood = this.filterMood === m.id ? '' : m.id;
             this.refreshData();
           })
-        })
+          // key 带选中态（2026-10-25 华为反馈：「选了标签要点第二次才亮」同源）：
+          // key 不变 ⇒ ForEach 不重建 item ⇒ chip 的高亮可能停在旧值。
+        }, (m: Mood) => m.id + (this.filterMood === m.id ? ':on' : ''))
         // 标签入口（默认收起，原因见 `tagsExpanded` 的注释）。
         // 正在生效时把标签名直接写在入口上 —— 否则收起后看不出"正在筛"。
         if (this.allTags.length > 0) {
@@ -698,7 +708,8 @@ struct Index {
                 this.filterTag = this.filterTag === t ? '' : t;
                 this.refreshData();
               })
-            })
+              // 同上：key 带选中态，选中变化必换 key ⇒ chip 一定重建、高亮一定跟上
+            }, (t: string) => t + (this.filterTag === t ? ':on' : ''))
           }
         }
         .scrollable(ScrollDirection.Horizontal)
