@@ -389,7 +389,8 @@ test('时间轴：key 必须全局唯一（LazyForEach 强依赖，重复会渲�
   ]);
   const keys: string[] = rows.map((r: TimelineRow) => r.key);
   assert.equal(new Set(keys).size, keys.length);
-  assert.ok(keys.indexOf('n:a') >= 0);
+  // key 现在是 'n:<id>:<updatedAt>:<words>'，按 id 前缀认（见 noteRowKey 的重建纪律）
+  assert.ok(keys.some((k: string) => k.startsWith('n:a:')));
   assert.ok(keys.indexOf('h:2026-09') >= 0);
 });
 

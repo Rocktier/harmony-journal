@@ -111,6 +111,15 @@ struct Index {
   private searchTimer: number = -1;
   @State private hits: SearchHit[] = [];
   @State private loaded: boolean = false;
+  /**
+   * 月历空态开关（2026-10-24 修复，独立布尔而不是 if 里现算 this.metas.length）。
+   *
+   * ⚠️ 原来在 build 的 if 里直接写 `this.loaded && this.metas.length === 0`：
+   *    解锁进首页后 metas 有 1 篇，**空态却一直显示**（模拟器实拍 + 双探针证实
+   *    metas/heatByDate/loaded 三值全对、渲染不更新）。ArkTS 对 if 条件里
+   *    数组 .length 的响应追踪不可靠 ⇒ 抽成 @State 布尔，reload 里显式赋值。
+   */
+  @State private monthEmpty: boolean = false;
   // P0-5 平板适配决策记录（2026-10-22）：月视图不做断点分栏。
   // 月历是 7 列周结构（列数不可变）；日记列表行是"日期 + 短摘要"，全宽拉伸
   // 不产生 Reader/Editor 那种"一行 40+ 字"的可读性问题；宽屏分栏（月历|列表）
@@ -213,6 +222,8 @@ struct Index {
     }
     this.favIds = fav;
     this.loaded = true;
+    // 月历空态显式赋值（2026-10-24：if 里现算 .length 不可靠，见 monthEmpty 声明处注释）
+    this.monthEmpty = this.metas.length === 0;
     this.allTags = collectTags(this.metas);
     this.stats = computeStats(this.metas, todayKey(), nowMs);
     // 数据变了 ⇒ 搜索的解密缓存失效（见 runSearch 的会话缓存说明）
@@ -906,11 +917,16 @@ struct Index {
             .onClick(() => {
               this.open(cell.date);
             })
-            // A 类容器伪按钮（2026-10-23 复评整改）：GridItem 本身不是 Button，
-            // 读屏不报"按钮"也不报哪天 —— 显式补标签（42 格月历全靠它导航）
-            .accessibilityText(cell.date + (cell.isToday ? '，今天' : '')
-              + (this.capsuleDates.includes(cell.date) ? '，有一封没到期的信' : ''))
-          }, (cell: MonthCell) => cell.date)
+          // A 类容器伪按钮（2026-10-23 复评整改）：GridItem 本身不是 Button，
+          // 读屏不报"按钮"也不报哪天 —— 显式补标签（42 格月历全靠它导航）
+          .accessibilityText(cell.date + (cell.isToday ? '，今天' : '')
+            + (this.capsuleDates.includes(cell.date) ? '，有一封没到期的信' : ''))
+          // ⚠️ 2026-10-24 修复：key 必须带 words —— ForEach 按 key 复用 item，
+          //    key 不变则 item 里的热度表达式（heatFill 经 wordsOf 读 @State）永驻
+          //    首次值（实拍：保存日记后月历格子不着色）。words 进 key 后热度变化
+          //    即换 key ⇒ item 重建 ⇒ 重新求值。（cell.words 由 cells() 每次 build
+          //    经 monthGrid 现算，本身就是最新的。）
+        }, (cell: MonthCell) => cell.date + ':' + cell.words)
         }
         .columnsTemplate('1fr 1fr 1fr 1fr 1fr 1fr 1fr')
         // 行数按当月实际需要（10 月只有 5 行，固定 6 行会白占 1/3 屏）
@@ -920,7 +936,9 @@ struct Index {
 
         // 新用户引导（P2-8，2026-10-22 整改）：月视图原来没有任何空态 ——
         // 第一个月全是空格子，不知道从哪开始。给一句方向明确的引导。
-        if (this.loaded && this.metas.length === 0) {
+        // ⚠️ 2026-10-24：条件改读 @State monthEmpty（reload 显式赋值）——
+        //    原来 if 里现算 this.metas.length，实测有数据也不消失（见声明处注释）。
+        if (this.monthEmpty) {
           Column() {
             Text('从今天开始')
               .fontSize(RJ_FS_CALLOUT)

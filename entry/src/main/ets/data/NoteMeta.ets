@@ -405,15 +405,22 @@ export interface TimelineRow {
  *    这与日历染色、收藏星是同一族坑（key 不变 = 不重建），解法同源：
  *    让 key 能区分状态 —— 锁定/解锁/跨天（倒计时数字变）都换 key，强制重建。
  *    普通日记恒定 '' 后缀 ⇒ 不会带来额外重建。
+ *
+ * ⚠️ 第二次同类事故（2026-10-24 模拟器实拍）：**编辑已有日记**后返回，
+ *    列表仍显示旧摘要/旧字数（冷启动才对）—— 因为 `n:<id>` 这个 key 里
+ *    没有「内容变了」的信号。所以普通日记也带上 updatedAt + words：
+ *    改文字/改心情 ⇒ key 变 ⇒ 那一行强制重建。updatedAt 在保存时必然刷新，
+ *    words 兜住「同时间戳内改字数」的边界。
  */
 function noteRowKey(m: NoteMeta, nowMs: number): string {
+  const rev: string = ':' + m.updatedAt + ':' + m.words;
   if (!isCapsule(m)) {
-    return 'n:' + m.id;
+    return 'n:' + m.id + rev;
   }
   if (capsuleLocked(m, nowMs)) {
-    return 'n:' + m.id + ':L' + daysUntilUnlock(m, nowMs);
+    return 'n:' + m.id + rev + ':L' + daysUntilUnlock(m, nowMs);
   }
-  return 'n:' + m.id + ':O';
+  return 'n:' + m.id + rev + ':O';
 }
 
 /**

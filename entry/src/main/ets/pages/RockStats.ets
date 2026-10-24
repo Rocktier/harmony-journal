@@ -157,32 +157,41 @@ struct RockStats {
 
           Row({ space: 4 }) {
             ForEach(this.months, (m: MonthWords) => {
+              // ⚠️ item 必须 layoutWeight(1) 拿确定宽度（2026-10-24 模拟器实测的血泪）：
+              //    早先靠内容撑宽，柱的 width('100%') 百分比循环回退到 Row 全宽
+              //    ⇒ 12 个月每个都占满行宽并排，只有第 0 个月在屏内、其余全推出右缘
+              //    （屏上只见一个「11月」标签，当月满柱在 x≈12000 外）。
               Column({ space: 2 }) {
-                // 柱：高度 = 当月字数 / 最大值 × BAR_MAX；0 字留 2vp 的基线痕
-                Stack({ alignContent: Alignment.Bottom }) {
+                // 柱区：FlexAlign.End 压底 —— 数字贴柱顶，0 字月只留 2vp 基线痕。
+                // 不用 Stack({alignContent:Bottom})：柱后画会把数字盖住。
+                Column({ space: 2 }) {
                   Text(m.words > 0 ? this.bigNum(m.words) : '')
                     .fontSize(8)
                     .fontFamily('monospace')
                     .fontColor(this.palette.text3)
-                  Column()
                     .width('100%')
+                    .textAlign(TextAlign.Center)
+                  // 柱：高度 = 当月字数 / 最大值 × BAR_MAX；0 字留 2vp 的基线痕
+                  Column()
+                    .width(14)
                     .height(m.words > 0 ? Math.max(3, Math.round(m.words * BAR_MAX / this.wordsMax())) : 2)
                     .backgroundColor(m.words > 0 ? this.palette.brand : this.palette.line)
                     .borderRadius({ topLeft: 2, topRight: 2 })
                 }
+                .justifyContent(FlexAlign.End)
                 .width('100%')
                 .height(BAR_MAX + 14)
-                .layoutWeight(1)
                 // 月份标签：只留「M月」（12 个放不下 2026-10）
                 Text(Number(m.month.substring(5, 7)) + '月')
                   .fontSize(8)
                   .fontFamily('monospace')
                   .fontColor(m.month === todayKey().substring(0, 7) ? this.palette.accent : this.palette.text3)
               }
+              .layoutWeight(1)
             }, (m: MonthWords) => m.month)
           }
           .width('100%')
-          .height(BAR_MAX + 26)
+          .height(BAR_MAX + 30)
           .margin({ top: RJ_SP_SM, bottom: RJ_SP_XL })
 
           // 心情分布（横条：emoji + 名称 + 茶褐条 + 计数）

@@ -137,15 +137,27 @@ test('timelineRows 的 key：普通日记恒定；胶囊带锁定/倒计时标�
       keys.set(r.meta.id, r.key);
     }
   }
-  // 普通日记：key 与历史版本一致（'n:'+id）—— 不带来额外重建
-  assert.equal(keys.get('plain'), 'n:plain');
-  // 锁定胶囊：'n:'+id+':L'+剩余天数
-  assert.equal(keys.get('cap'), 'n:cap:L3');
+  // 普通日记：'n:'+id+':'+updatedAt+':'+words（后两段是「内容变了」的信号，见 noteRowKey）
+  assert.equal(keys.get('plain'), 'n:plain:1:10');
+  // 锁定胶囊：'n:'+id+rev+':L'+剩余天数
+  assert.equal(keys.get('cap'), 'n:cap:1:20:L3');
   // 已解锁胶囊：':O' 后缀（与锁定态 key 不同 ⇒ 解锁瞬间那一行会重建）
-  assert.equal(keys.get('old'), 'n:old:O');
+  assert.equal(keys.get('old'), 'n:old:1:30:O');
   // 跨天：倒计时数字进 key ⇒ 天数变化行也会重建（数字不会陈旧）
   // 注意单条数据也会带月份头行（index 0 是 header），要按 meta 定位日记行
   const tomorrowRows = timelineRows([capsule], NOW + 2 * DAY);
   const capRow = tomorrowRows.filter((r: TimelineRow) => r.meta !== null)[0];
-  assert.equal(capRow.key, 'n:cap:L1');
+  assert.equal(capRow.key, 'n:cap:1:20:L1');
+});
+
+test('timelineRows 的 key：改文字/改字数 ⇒ key 变 ⇒ 编辑完返回列表会重建（2026-10-24 实拍 bug）', () => {
+  const before: NoteMeta = entry('2026-10-20', 'a', 12);
+  // 编辑：正文变长、updatedAt 刷新（保存必然发生）
+  const after: NoteMeta = { ...entry('2026-10-20', 'a', 69), updatedAt: 2 };
+  const keyOf = (m: NoteMeta): string =>
+    timelineRows([m], NOW).filter((r: TimelineRow) => r.meta !== null)[0].key;
+  assert.notEqual(keyOf(before), keyOf(after));
+  // 只改字数（同时间戳边界）也必须换 key
+  const sameTs: NoteMeta = { ...before, words: 12 + 1 };
+  assert.notEqual(keyOf(before), keyOf(sameTs));
 });

@@ -4,7 +4,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 
 import { unlockWith, setupVault, unlockWithBiometric, hasBiometric, isFirstRun } from '../data/NoteStoreHolder';
 import { PrivacyPrefs } from '../data/PrivacyPrefs';
-import { RJ_FS_CALLOUT, RJ_FS_CAPTION, RJ_FS_DISPLAY, RJ_FS_HEADING, RJ_FS_META, RJ_SP_LG, RJ_SP_MD, RJ_SP_SM, RJ_SP_TOP_INSET, RJ_SP_VOID, RJ_SP_XL } from '../theme/RjTokens';
+import { RJ_FS_CALLOUT, RJ_FS_CAPTION, RJ_FS_DISPLAY, RJ_FS_HEADING, RJ_FS_META, RJ_SP_LG, RJ_SP_MD, RJ_SP_SM, RJ_SP_TOP_INSET, RJ_SP_VOID, RJ_SP_XL, RJ_SP_XXXL } from '../theme/RjTokens';
 import { ThemePalette } from '../theme/ThemePalette';
 
 /**
@@ -132,8 +132,9 @@ struct Unlock {
   private unlockForm() {
     // ⚠️ 2026-10-23 复评（横屏/矮屏）：外包 Scroll —— 原不可滚容器在横屏矮屏下
     //    把「同意并继续」挤出屏幕底部且无任何滚动途径（内容不可达 = 功能坏）。
-    //    代价：Blank 的压底语义在 Scroll 内不再生效（信任锚贴在内容下方）——
-    //    可用性优先于竖屏压底美学。缩进暂未重排（语法无关，先保正确）。
+    // ⚠️ 2026-10-24 后续修复：Scroll 内 Column 补 height('100%') + 信任锚 margin
+    //    top 保底，Blank 压底语义恢复（详见 Blank 处注释）。
+    //    缩进暂未重排（语法无关，先保正确）。
     Scroll() {
     Column() {
       /**
@@ -247,13 +248,21 @@ struct Unlock {
       }
       // 弹性空间：把信任锚压到屏幕底部 —— 它原来是半空里飘的一行小字，
       // 而"数据只在这台设备上"是全 App 最重要的信任承诺之一，不该飘着
+      // ⚠️ 2026-10-24 党哥指出按钮与信任锚零间距不合 UI 规范。根因：Scroll 内
+      //    Column 高度=内容高，Blank 永远 0 高（压底语义失效）。修两层：
+      //    ① 本 Column 给 height('100%') —— Blank 重新获得可撑空间（内容不满时
+      //       信任锚贴底；内容超出时 Scroll 兜底可滚，Blank 自然归 0）；
+      //    ② 信任锚加 margin top RJ_SP_XXXL 保底 —— Blank 归 0 的滚动态也有 24vp。
       Blank()
       Text('数据只在这台设备上 · AES-256-GCM 加密')
         .fontSize(RJ_FS_META)
         .fontColor(this.palette.text3)
-        .margin({ bottom: RJ_SP_VOID })
+        .margin({ top: RJ_SP_XXXL, bottom: RJ_SP_VOID })
     }
     .width('100%')
+    // 2026-10-24：Scroll 内 Column 默认高度=内容高 ⇒ Blank 永为 0。给 100% 让
+    // Blank 恢复压底能力；内容超高时 Scroll 照常滚动（矮屏/键盘弹出不受影响）。
+    .height('100%')
     .padding({ bottom: RJ_SP_VOID })
     }
     .width('100%')
