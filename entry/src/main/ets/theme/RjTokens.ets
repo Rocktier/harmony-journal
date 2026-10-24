@@ -44,7 +44,6 @@ export const RJ_SP_TOP_INSET: number = 80; /** 登录页顶部整体下沉 */
 export const RJ_RADIUS_SM: number = 4;  /** 缩略图 / chip —— 官方超小圆角 */
 export const RJ_RADIUS_MD: number = 8;  /** 组件内控件（工具栏按键）—— 官方小圆角 */
 export const RJ_RADIUS_LG: number = 12; /** 强调型动作按钮（写今天 / 保存）—— 官方中圆角 */
-export const RJ_RADIUS_XL: number = 16; /** 卡片 / 面板 / 浮层 —— 官方大圆角 */
 
 /** 行高阶（vp） */
 export const RJ_LH_PARA: number = 22; /** 正文段落行高（CALLOUT 字号下约 1.5 倍） */

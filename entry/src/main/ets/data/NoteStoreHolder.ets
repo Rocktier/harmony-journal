@@ -65,11 +65,6 @@ export async function bootstrap(ctx: common.UIAbilityContext): Promise<boolean> 
   return true;
 }
 
-/** 当前 vault 的 salt（解锁页用） */
-export function getSalt(): Uint8Array {
-  return vaultSalt;
-}
-
 /** 是否首次运行 */
 export function isFirstRun(): boolean {
   return firstRun;

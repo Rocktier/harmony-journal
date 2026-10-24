@@ -53,12 +53,4 @@ export const TEMPLATES: JournalTemplate[] = [
  * （模板条只在空日记时出现，"空白模板"按钮没有存在场景）。死代码清零。
  */
 
-/** 按 id 找模板；找不到返回 null */
-export function templateById(id: string): JournalTemplate | null {
-  for (let i: number = 0; i < TEMPLATES.length; i++) {
-    if (TEMPLATES[i].id === id) {
-      return TEMPLATES[i];
-    }
-  }
-  return null;
-}
+/** 按 id 找模板；找不到返回 null —— 2026-10-25 删除（全仓 0 引用） */
