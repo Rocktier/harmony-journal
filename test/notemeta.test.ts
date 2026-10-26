@@ -50,8 +50,13 @@ test('日期键用本地时区日期，不是 UTC（凌晨导出文件名不写�
   // 无论时区：dateKeyOf 的结果必须等于本地日历字段，而不是 UTC 日历字段
   assert.equal(localKey, d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
     + '-' + String(d.getDate()).padStart(2, '0'));
-  // 文件名里绝不能出现 UTC 的日期键
-  assert.notEqual(backupFileName(localKey), backupFileName(utcKey));
+  // 文件名里绝不能出现 UTC 的日期键。
+  // ⚠️ 2026-10-26 修：这条断言原本无条件成立，但它**只在本地与 UTC 跨天时**才有意义 ——
+  //   CI 跑在 UTC（ubuntu，TZ=UTC）时 localKey 与 utcKey 本来就是同一个 '2026-10-22'，
+  //   文件名当然相同，断言必挂（CI 红过一次）。东八区才有 local=10-23 ≠ utc=10-22。
+  if (localKey !== utcKey) {
+    assert.notEqual(backupFileName(localKey), backupFileName(utcKey));
+  }
 });
 
 test('闰年：2024-02 有 29 天，2026-02 只有 28 天', () => {
