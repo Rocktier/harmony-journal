@@ -1,7 +1,7 @@
 # Rock私记 1.0.5 更新说明（华为应用市场后台上传用）
 
 > 版本：1.0.5（versionCode **1000006**）
-> 状态：**待模拟器验证后再定稿**（原因见下方「为什么这次必须先验证」）
+> 状态：**已通过模拟器实测验证（2026-10-26 22:00–22:10），可提交 AGC**
 > 对应代码区间：`1.0.4 上架 commit .. HEAD`
 > 上架包：`Rock私记-1.0.5-上架.app`（264 KB，release 正式签名 rockjournal-v1.p7b）
 
@@ -22,7 +22,7 @@
 
 ---
 
-## 为什么这次必须先验证再提交（重要）
+## 为什么这次坚持先验证再提交（重要）
 
 **1.0.4 的说明里已经写过「【修复】跟随系统深浅生效」** —— 当时宣称修了，实际没修好，
 所以复评又提了一遍。这条反馈的原文是：
@@ -34,12 +34,33 @@
 也就是说：**上一轮"修好了"是没有验证过的宣称**。这次如果不做真机/模拟器验证就再写一条
 同款文案，等于第二次虚假宣传 —— 审核员第三次提同样问题时，代价远大于第一次。
 
-**验证清单（模拟器）**：
-1. 装 1.0.5 包 → 设置-外观选「跟随系统」
-2. 系统设置里打开深色模式 → **应用应立即变深色**（不用切别的模式）
-3. 系统关掉深色模式 → 应用应立即变浅色
-4. 选「深色」/「浅色」固定档 → 再切系统深浅，应用**不应**被覆盖
-5. 切回「跟随系统」→ 立即跟随系统当前深浅
+**所以这一版的文案是先验证、后定稿**（实测结果见下节）。
+
+---
+
+## 验证清单（模拟器实测结果 · 2026-10-26）
+
+**这次是真的逐条跑过的**（上一轮 1.0.4 的同款文案没验证就写，这次不重复那个错）。
+
+| # | 场景 | 期望 | 实测 |
+|---|---|---|---|
+| 1 | 跟随系统 + 系统深色 | 应用深色 | ✅ 背景 #000000，文字 #FFFFFF |
+| 2 | 跟随系统下切系统深色 | **应用立即变深，不用切别的模式** | ✅ 回应用已是深色 |
+| 3 | 跟随系统下切系统浅色 | 应用变浅 | ✅ 背景 #FAF8F3 |
+| 4 | 固定「深色」+ 系统切浅 | **不被系统覆盖** | ✅ 仍深色 |
+| 5 | 固定「浅色」+ 系统切深 | **不被系统覆盖** | ✅ 仍浅色 |
+| 6 | 切回「跟随系统」 | 立即跟随系统当前深浅 | ✅ 切回即变色 |
+
+补充证据（系统日志，`RockJournal` tag）：
+
+```
+22:07:19.141  appearance follows system, colorMode=0 dark=yes   ← onConfigurationUpdate 回调
+22:07:19.159  onForeground
+```
+
+即：**系统主题变化是由 `onConfigurationUpdate` 收到的（用回调参数 `newConfig.colorMode`，
+不是读可能还是旧值的 `ctx.config.colorMode`）**，色板在应用回前台前就已换好，
+回前台看到的就是新配色 —— 审核员复现路径（跟随系统 → 开系统深色 → 回应用）已覆盖并通过。
 
 ---
 
@@ -72,6 +93,25 @@ CI 跑在 UTC（ubuntu）时 localKey 与 utcKey 本来就是同一天，断言�
 - ArkTS debug + release 编译 BUILD SUCCESSFUL；
 - release 签名：rockreader-v2.p12 + **rockjournal-v1.p7b**（DevEco 加密口令，同机可复制）；
 - 包内版本核对：`pack.info → summary.app.version = {code: 1000006, name: 1.0.5}`；
-- **⚠️ 模拟器未能验证**：命令行启动 DevEco 模拟器（`Emulator.exe -start`）在本机报
-  "Unable to start the emulator" / GLib 断言，进程起不来 ⇒ 需从 DevEco 的
-  Device Manager 手动启动后补验。
+- **出包三步验收全过**（2026-10-26）：
+  ① `verify-app -inFile RockJournal-release-signed.app -inForm zip` → *Verify success*；
+  ② 抠出包内 Profile → `type=release` + `bundle-name=com.rocktier.rockjournal` + 无 `debug-info`；
+  ③ 包内 Profile 与本地 `keys/rockjournal-v1.p7b` **SHA256 一致**（ab74152d…）。
+- **模拟器实测通过**（2026-10-26 22:00–22:10，DevEco 模拟器，Pura/Mate 系 API 20+）：
+  6 项场景全过（见上表），日志实证 `appearance follows system, colorMode=0 dark=yes`。
+
+### 模拟器实测踩的坑（留给下一次）
+
+- **安全键盘会把截图拍成全黑**：解锁页是密码输入框（安全键盘 / secure 窗口），
+  键盘弹出期间 `uitest screenCap` 拍到的 Journal 区域是**纯黑**，而 `dumpLayout`
+  仍能读到完整 UI 树 ⇒ 极易误判成"深色模式下应用渲染成黑屏"。
+  判据：**关掉键盘（Back）再截图**，画面立刻正常。真配色没问题。
+- **模拟器会自动息屏**（约 30s），息屏后截图同样是一片黑（特征：整屏纯黑、无状态栏）。
+  解法：`hdc shell "power-shell wakeup"` 点亮；`power-shell timeout -o <ms>` 可覆盖息屏时间。
+- **系统设置应用**：桌面第 2 页有「设置」图标；也可用
+  `aa start -a com.huawei.hmos.settings.MainAbility -b com.huawei.hmos.settings` 直接拉起，
+  且**会保留上次所在页面**（停在「显示和亮度」）。深浅色切换在
+  「显示和亮度 → 显示模式 → 浅色/深色」两个 Radio 上（不是「深色模式」那一行定时规则）。
+- **不要信 dumpLayout 的过期树**：一律以截图为准；配色深浅用纯 Python PNG 解码
+  （zlib + 手动 unfilter）取背景主色判定：主色 ≈ #FAF8F3 = 浅色，≈ #000000 = 深色。
+
