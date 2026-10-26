@@ -7,6 +7,7 @@ import {
   applyAppearanceAtStartup, applySystemDark, currentPaletteDark, systemIsDark
 } from '../common/AppearanceApply';
 import { AppearancePrefs } from '../data/AppearancePrefs';
+import { CARD_INTENT_WRITE_TODAY } from '../data/JournalCardData';
 import { bootstrap } from '../data/NoteStoreHolder';
 
 const DOMAIN: number = 0xD002;
@@ -42,8 +43,97 @@ export default class EntryAbility extends UIAbility {
   }
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+    this.captureIntent(want);
     this.applyColorMode();
     hilog.info(DOMAIN, TAG, 'onCreate');
+  }
+
+  /**
+   * 桌面卡片点「写今天」→ postCardAction('router') 拉起本应用时带 `intent`。
+   *
+   * 两种进入路径都要接住：
+   *  - 应用没运行：onCreate 的 want 里就有 ⇒ 存进 AppStorage，
+   *    用户解锁后 Index 页消费 → 直达编辑器；
+   *  - 应用在运行（singleton）：走 onNewWant ⇒ 存进 AppStorage，
+   *    Index 页的 @Watch 立刻消费 → 直达编辑器。
+   *
+   * ⚠️ 这里**只存意图，不存任何内容**（卡片那边本来也没有内容可传）。
+   */
+  onNewWant(want: Want): void {
+    hilog.info(DOMAIN, TAG, 'onNewWant');
+    this.captureIntent(want);
+  }
+
+  /**
+   * 把卡片传来的意图存进 AppStorage（供 Index 页消费）
+   *
+   * ⚠️⚠️ **卡片参数不能按自定义键名取**（2026-10-26 实测，日志实证）：
+   *    卡片里写 `params: { intent: 'writeToday' }`，系统拉起 ability 时传过来的
+   *    want.parameters 变成：
+   *      { "a9": "writeToday", "formID": 906329980, "params": "{\"a9\":\"writeToday\"}", ... }
+   *    —— **自定义键被重命名成 a0/a1/a2…（按位置排，本例排到了 a9）**，
+   *    并且原样塞进 `params` 字段的 JSON 字符串里。
+   *    ⇒ 只认 `params['intent']` 必然读不到（症状：点了卡片应用起来了，但什么也没发生）。
+   *    ⇒ 正确姿势：**按"值"找，不按"键"找**（意图值是唯一语义标记）。
+   */
+  private captureIntent(want: Want): void {
+    try {
+      const params: Record<string, Object> | undefined = want.parameters;
+      if (params === undefined) {
+        hilog.info(DOMAIN, TAG, 'want params undefined');
+        return;
+      }
+      const intent: string = this.pickIntent(params);
+      if (intent.length === 0) {
+        hilog.info(DOMAIN, TAG, 'no card intent in want');
+        return;
+      }
+      if (intent !== CARD_INTENT_WRITE_TODAY) {
+        hilog.warn(DOMAIN, TAG, 'unknown card intent ignored: %{public}s', intent);
+        return;
+      }
+      AppStorage.setOrCreate<string>('pendingIntent', intent);
+      hilog.info(DOMAIN, TAG, 'card intent captured: %{public}s', intent);
+    } catch (e) {
+      hilog.warn(DOMAIN, TAG, 'capture intent failed: %{public}s', JSON.stringify(e));
+    }
+  }
+
+  /** 从卡片 want 的参数里取出意图（不依赖键名） */
+  private pickIntent(params: Record<string, Object>): string {
+    // (a) 系统把卡片自定义参数塞在 params 字段里（JSON 字符串）
+    const nested: Object | undefined = params['params'];
+    if (typeof nested === 'string') {
+      const hit: string = this.findInJson(nested);
+      if (hit.length > 0) {
+        return hit;
+      }
+    }
+    // (b) 扁平键：自定义键被系统重命名成 a0/a1/…（实测 'intent' → 'a9'）
+    for (let i: number = 0; i < 32; i++) {
+      const v: Object | undefined = params['a' + i];
+      if (typeof v === 'string' && v === CARD_INTENT_WRITE_TODAY) {
+        return v;
+      }
+    }
+    return '';
+  }
+
+  /** JSON 字符串里找意图值（找不到返回空串） */
+  private findInJson(json: string): string {
+    try {
+      const obj = JSON.parse(json) as Record<string, Object>;
+      const keys: string[] = Object.keys(obj);
+      for (const k of keys) {
+        const v: Object = obj[k];
+        if (typeof v === 'string' && v === CARD_INTENT_WRITE_TODAY) {
+          return v;
+        }
+      }
+    } catch (e) {
+      hilog.warn(DOMAIN, TAG, 'parse card params failed: %{public}s', JSON.stringify(e));
+    }
+    return '';
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {

@@ -52,6 +52,27 @@
             "resource": "$profile:backup_config"
           }
         ]
+      },
+      {
+        // 桌面服务卡片（2026-10-26 党哥拍板「零泄漏」档）：
+        // 只显示"今天几号" + 一个「写今天」按钮，点卡片拉起应用直达编辑器。
+        //
+        // ⚠️ 为什么卡片里一个日记字都没有：日记正文与索引**整份加密**，
+        //    主密钥只在主进程内存里；卡片跑在 FormExtensionAbility 里，
+        //    与主进程**不共享内存** ⇒ 结构上就拿不到密钥、读不出任何内容。
+        //    这是隐私承诺的一部分，不是"还没做"。
+        // 零联网、零新权限（卡片不需要任何权限）。
+        "name": "EntryFormAbility",
+        "srcEntry": "./ets/entryformability/EntryFormAbility.ets",
+        "label": "$string:EntryFormAbility_label",
+        "description": "$string:EntryFormAbility_desc",
+        "type": "form",
+        "metadata": [
+          {
+            "name": "ohos.extension.form",
+            "resource": "$profile:form_config"
+          }
+        ]
       }
     ]
   }

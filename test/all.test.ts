@@ -10,3 +10,4 @@ import './stats.test.ts';
 import './indexcodec.test.ts';
 import './appearance.test.ts';
 import './palette.test.ts';
+import './journalcard.test.ts';

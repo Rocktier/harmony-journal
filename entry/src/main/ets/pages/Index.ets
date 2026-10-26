@@ -7,6 +7,7 @@ import { DEV_SHOW_BADGE } from '../common/DevFlags';
 import { ChevronButton } from '../components/ChevronButton';
 import { TimelineDataSource } from '../common/TimelineDataSource';
 import { ImageStore } from '../data/ImageStore';
+import { CARD_INTENT_WRITE_TODAY } from '../data/JournalCardData';
 import {
   JournalStats, MOODS, MonthCell, Mood, NoteMeta, NoteText, SearchHit, TimelineRow, collectTags,
   capsuleBadge, capsuleLocked, computeStats, countsForStats, filterMetas, isCapsule, moodById,
@@ -61,6 +62,14 @@ interface RecallCard {
 struct Index {
   /** 运行时色板（深浅切换 = AppStorage 换对象，页面栈不动；见 ThemePalette 头注） */
   @StorageLink('palette') palette: ThemePalette = new ThemePalette(false);
+  /**
+   * 桌面卡片点「写今天」传进来的意图（EntryAbility 捕获后存 AppStorage）。
+   * 空串 = 没有待处理的意图。
+   *
+   * ⚠️ 必须用 @StorageLink + @Watch（不是 @State）：应用已在运行时点卡片，
+   *    EntryAbility.onNewWant 改的是 AppStorage，@State 收不到 ⇒ 跳不过去。
+   */
+  @StorageLink('pendingIntent') @Watch('onPendingIntent') pendingIntent: string = '';
   @State private metas: NoteMeta[] = [];
   /**
    * 日期 → 当天总字数（月历热力色阶的数据源）。
@@ -179,6 +188,8 @@ struct Index {
    */
   onPageShow(): void {
     this.reload();
+    // 桌面卡片「写今天」：本页首次出现（解锁后）时消费 ⇒ 直接进编辑器
+    this.consumePendingIntent();
     // **双保险**（2026-10-13 模拟器实测抓到，与 Rock阅读 进度 bug 同构）：
     // router.back 时本页 onPageShow 与 Editor.aboutToDisappear 的 save() **顺序不保证** ——
     // onPageShow 先跑就会读到旧索引（实拍：给今天的日记加标签/收藏后返回，列表不刷新，
@@ -188,6 +199,28 @@ struct Index {
       hilog.info(DOMAIN, TAG, 'onPageShow deferred reload fired');
       this.reload();
     }, 80);
+  }
+
+  /**
+   * 消费「写今天」意图 → 打开今天的编辑器。
+   *
+   * ⚠️ 两条进入路径都要接住（2026-10-26 桌面卡片）：
+   *   ① 应用刚启动且未解锁 → 用户解锁 → 本页首次出现（onPageShow 消费）；
+   *   ② 应用已在运行 → 点卡片 → EntryAbility.onNewWant 存意图 → @Watch 触发。
+   * 消费后立刻清空（清空也会触发一次 @Watch，值为空直接返回 ⇒ 不会重复跳）。
+   */
+  private consumePendingIntent(): void {
+    if (this.pendingIntent !== CARD_INTENT_WRITE_TODAY) {
+      return;
+    }
+    AppStorage.Set<string>('pendingIntent', '');
+    hilog.info(DOMAIN, TAG, 'card intent consumed, open editor for today');
+    this.open(todayKey());
+  }
+
+  /** @Watch 回调：应用已在运行时点卡片 ⇒ 立刻续跳编辑器 */
+  private onPendingIntent(): void {
+    this.consumePendingIntent();
   }
 
   private reload(): void {
