@@ -36,13 +36,18 @@ export function systemIsDark(ctx: common.Context): boolean {
 export function applyAppearanceAtStartup(ctx: common.Context, mode: AppearanceMode): void {
   try {
     const app: common.ApplicationContext = (ctx as common.UIAbilityContext).getApplicationContext();
-    if (mode === APPEARANCE_DARK) {
-      app.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
-    } else if (mode === APPEARANCE_LIGHT) {
-      app.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT);
-    } else {
-      app.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
-    }
+    // ⚠️ 一律 NOT_SET（"跟随系统"），**不再按用户偏好钉死 DARK/LIGHT**（2026-10-26 修）。
+    //
+    // 为什么不能钉死：app 一旦被 setColorMode(DARK/LIGHT) 固定，
+    // 系统深色模式变化就**不再回调 onConfigurationUpdate** ⇒ 应用收不到"系统变了"的通知；
+    // 等用户想切回「跟随系统」时，又必须运行中调 setColorMode(NOT_SET) 才能恢复跟随 ——
+    // 而运行中调 setColorMode 会触发 UIContent 重建、页面栈保不住（见文件头注）。
+    // 结果就是：切到跟随系统后系统主题再变，应用纹丝不动（华为复评实测）。
+    //
+    // 现在：app 层面永远"跟随系统"（⇒ 一定能收到配置变化回调），
+    // 视觉一律由下面的 palette 决定 —— 本应用 UI 100% 走 palette，
+    // 资源限定符一处都没用（$r('app.color.*') 引用数 = 0），所以两套机制不冲突。
+    app.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
   } catch (e) {
     hilog.warn(DOMAIN, TAG, 'startup setColorMode failed: %{public}s', JSON.stringify(e));
   }
@@ -58,10 +63,30 @@ export function applyAppearanceAtStartup(ctx: common.Context, mode: AppearanceMo
  * 这里 Set 新对象 ⇒ 全 UI 重绘，栈/输入/滚动/焦点全保留。
  * 系统栏不再由 setColorMode 带，手动补（不补的话状态栏还是旧色的字）。
  */
-export function applyPaletteMode(ctx: common.Context, mode: AppearanceMode): void {
-  const dark: boolean = resolveDark(mode, systemIsDark(ctx));
+export function applyPaletteMode(ctx: common.Context, mode: AppearanceMode, systemDark?: boolean): void {
+  const dark: boolean = resolveDark(mode, systemDark === undefined ? systemIsDark(ctx) : systemDark);
   AppStorage.Set('palette', new ThemePalette(dark));
   syncSystemBars(ctx, dark);
+}
+
+/**
+ * 系统主题变了（且用户选的是「跟随系统」）—— 按系统当前深浅换色板。
+ *
+ * 与 `applyPaletteMode` 的区别：这里**不重读** `ctx.config.colorMode`
+ * （回调触发那一刻它可能还是旧值），深浅由调用方从 `newConfig.colorMode` 直接给出。
+ */
+export function applySystemDark(ctx: common.Context, systemDark: boolean): void {
+  AppStorage.Set('palette', new ThemePalette(systemDark));
+  syncSystemBars(ctx, systemDark);
+}
+
+/** 当前色板是否深色；没有色板时返回 null（未初始化）。 */
+export function currentPaletteDark(): boolean | null {
+  const p = AppStorage.Get<ThemePalette>('palette');
+  if (p === undefined || p === null) {
+    return null;
+  }
+  return p.dark;
 }
 
 /** 状态栏文字/底色手动跟随（不再有 setColorMode 代劳） */

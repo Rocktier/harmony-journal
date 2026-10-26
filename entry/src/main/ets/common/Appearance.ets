@@ -71,6 +71,48 @@ export function resolveDark(mode: AppearanceMode, systemDark: boolean): boolean 
 }
 
 /**
+ * 系统 `Configuration.colorMode` 的取值（来自 `ConfigurationConstant.ColorMode`）。
+ *
+ * 抄成常量是为了让「判定系统深浅」能留在**纯逻辑层**——CI 上跑不了
+ * `@kit.AbilityKit` 的 ConfigurationConstant，但可以测这个数值映射。
+ * ⚠️ 改前先对一眼 SDK：
+ *   `NOT_SET = -1, DARK = 0, LIGHT = 1`（DARK 是 0 不是 1，别记反）。
+ */
+export const COLOR_MODE_NOT_SET: number = -1;
+export const COLOR_MODE_DARK: number = 0;
+export const COLOR_MODE_LIGHT: number = 1;
+
+/**
+ * 系统当前是否深色（由 `Configuration.colorMode` 数值判定）。
+ *
+ * 只有 DARK 算深色；NOT_SET / LIGHT 都算浅色（读不到时回落浅色，
+ * 与修复前行为一致，不会更差）。
+ */
+export function isSystemDarkColorMode(colorMode: number | undefined): boolean {
+  return colorMode !== undefined && colorMode === COLOR_MODE_DARK;
+}
+
+/**
+ * 色板要不要跟着系统重算（**跟随系统**档的守门）。
+ *
+ * 2026-10-26 华为复评反馈：「选择跟随系统，打开系统深色模式后，
+ * 需切换其他模式重新选择跟随系统才可变为深色」——
+ * 根因是系统深浅只在**切模式那一刻**读一次，系统主题变化后没人重算色板。
+ *
+ * @param mode 用户选的外观档
+ * @param systemDark 系统当前是否深色
+ * @param currentDark 当前色板是否深色
+ * @returns true = 需要重算并替换 palette
+ */
+export function paletteNeedsRefresh(mode: AppearanceMode, systemDark: boolean, currentDark: boolean): boolean {
+  // 显式选了深/浅的人不该被系统覆盖
+  if (mode !== APPEARANCE_SYSTEM) {
+    return false;
+  }
+  return systemDark !== currentDark;
+}
+
+/**
  * 点一下切到哪一档（编辑器那个快捷按钮用）。
  *
  * 顺序：跟随系统 → 深色 → 浅色 → 跟随系统。

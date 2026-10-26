@@ -64,7 +64,7 @@ struct Settings {
     this.appearance = this.prefs.get();
   }
 
-  /** 切换外观：落偏好 + 立刻作用于系统（资源限定符自动换深/浅色，全应用一致） */
+  /** 切换外观：落偏好 + 立刻换色板（全应用一致，走 AppStorage 的 palette 对象） */
   private setAppearance(mode: AppearanceMode): void {
     this.appearance = mode;
     this.prefs.set(mode);

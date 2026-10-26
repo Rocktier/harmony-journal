@@ -2,8 +2,10 @@ import { AbilityConstant, Configuration, UIAbility, Want } from '@kit.AbilityKit
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 
-import { APPEARANCE_SYSTEM } from '../common/Appearance';
-import { applyAppearanceAtStartup, applyPaletteMode } from '../common/AppearanceApply';
+import { APPEARANCE_SYSTEM, AppearanceMode, isSystemDarkColorMode, paletteNeedsRefresh } from '../common/Appearance';
+import {
+  applyAppearanceAtStartup, applySystemDark, currentPaletteDark, systemIsDark
+} from '../common/AppearanceApply';
 import { AppearancePrefs } from '../data/AppearancePrefs';
 import { bootstrap } from '../data/NoteStoreHolder';
 
@@ -23,6 +25,11 @@ export default class EntryAbility extends UIAbility {
    * 2026-10-12 起：读用户偏好（沙箱 KV）—— 没选过就是"跟随系统"（不打扰）；
    * 用户显式选了深/浅色就按他的来。必须在 loadContent **之前**定下来，
    * 否则首帧会先闪一下浅色再变深（晚上被窝里写日记 = 一次刺眼）。
+   *
+   * 2026-10-26 再改：app 层面的 colorMode 一律 NOT_SET（跟随系统），
+   * 深/浅偏好只体现在色板（palette）上 —— 详见 applyAppearanceAtStartup 的注释。
+   * 原因：app 一旦被钉死成 DARK/LIGHT，系统主题变化就不再回调 onConfigurationUpdate，
+   * "跟随系统"就永远跟不上系统（华为复评实测）。
    */
   private applyColorMode(): void {
     try {
@@ -93,11 +100,21 @@ export default class EntryAbility extends UIAbility {
     try {
       const prefs: AppearancePrefs = new AppearancePrefs();
       prefs.open(this.context);
-      if (prefs.get() !== APPEARANCE_SYSTEM) {
+      const mode: AppearanceMode = prefs.get();
+      if (mode !== APPEARANCE_SYSTEM) {
         return;
       }
-      applyPaletteMode(this.context, APPEARANCE_SYSTEM);
-      hilog.info(DOMAIN, TAG, 'appearance follows system, colorMode=%{public}d', newConfig.colorMode);
+      // ⚠️ 必须用**回调参数** newConfig.colorMode，不能读 ctx.config.colorMode ——
+      //    回调触发那一刻 ctx.config 可能还是旧值，那就会算出"系统没变"，
+      //    应用纹丝不动（华为 2026-10-26 复评实测：跟随系统 + 开系统深色 → 不变色）。
+      const systemDark: boolean = isSystemDarkColorMode(newConfig.colorMode);
+      const cur: boolean | null = currentPaletteDark();
+      if (cur !== null && !paletteNeedsRefresh(mode, systemDark, cur)) {
+        return;
+      }
+      applySystemDark(this.context, systemDark);
+      hilog.info(DOMAIN, TAG, 'appearance follows system, colorMode=%{public}d dark=%{public}s',
+        newConfig.colorMode, systemDark ? 'yes' : 'no');
     } catch (e) {
       hilog.warn(DOMAIN, TAG, 'follow system failed: %{public}s', JSON.stringify(e));
     }
@@ -105,6 +122,30 @@ export default class EntryAbility extends UIAbility {
 
   onForeground(): void {
     hilog.info(DOMAIN, TAG, 'onForeground');
+    // 兜底：极少数情况下系统主题变化没走到 onConfigurationUpdate（应用在后台时切深色），
+    // 回到前台对一次账 —— 跟随系统档下色板必须与系统一致。
+    this.syncFollowSystem();
+  }
+
+  /** 对账：用户选「跟随系统」时，色板深浅必须等于系统当前深浅。 */
+  private syncFollowSystem(): void {
+    try {
+      const prefs: AppearancePrefs = new AppearancePrefs();
+      prefs.open(this.context);
+      const mode: AppearanceMode = prefs.get();
+      if (mode !== APPEARANCE_SYSTEM) {
+        return;
+      }
+      const systemDark: boolean = systemIsDark(this.context);
+      const cur: boolean | null = currentPaletteDark();
+      if (cur === null || !paletteNeedsRefresh(mode, systemDark, cur)) {
+        return;
+      }
+      applySystemDark(this.context, systemDark);
+      hilog.info(DOMAIN, TAG, 'foreground sync appearance, dark=%{public}s', systemDark ? 'yes' : 'no');
+    } catch (e) {
+      hilog.warn(DOMAIN, TAG, 'foreground sync failed: %{public}s', JSON.stringify(e));
+    }
   }
 
   onBackground(): void {

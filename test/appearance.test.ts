@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   APPEARANCE_DARK, APPEARANCE_LIGHT, APPEARANCE_SYSTEM, appearanceLabel,
-  isDarkMode, nextAppearance, normalizeAppearance, resolveDark
+  isDarkMode, isSystemDarkColorMode, nextAppearance, normalizeAppearance, paletteNeedsRefresh, resolveDark
 } from '../entry/src/main/ets/common/Appearance';
 
 test('未知值一律回落「跟随系统」（默认值必须是不打扰）', () => {
@@ -49,4 +49,33 @@ test('resolveDark：跟随系统 ⇒ 取系统当前深浅（华为反馈「跟�
   // 显式选择不能被系统覆盖
   assert.equal(resolveDark(APPEARANCE_DARK, false), true);
   assert.equal(resolveDark(APPEARANCE_LIGHT, true), false);
+});
+
+// ─────────────────────────────────────────────────────────────
+// 2026-10-26 华为复评反馈的守门：
+// 「选择跟随系统，打开系统深色模式后，需切换其他模式重新选择跟随系统才可变为深色」
+// ─────────────────────────────────────────────────────────────
+
+test('isSystemDarkColorMode：只有 DARK(0) 算深色，LIGHT(1)/NOT_SET(-1) 都算浅色', () => {
+  // ⚠️ 数值抄自 SDK ConfigurationConstant.ColorMode：DARK=0、LIGHT=1、NOT_SET=-1
+  assert.equal(isSystemDarkColorMode(0), true);
+  assert.equal(isSystemDarkColorMode(1), false);
+  assert.equal(isSystemDarkColorMode(-1), false);
+});
+
+test('paletteNeedsRefresh：跟随系统 + 系统深浅变了 ⇒ 必须重算（这就是本次 bug 的守门）', () => {
+  // 场景复现：跟随系统（色板浅）→ 系统切深色 → 需要重算
+  assert.equal(paletteNeedsRefresh(APPEARANCE_SYSTEM, true, false), true);
+  // 系统切回浅色 ⇒ 也要重算
+  assert.equal(paletteNeedsRefresh(APPEARANCE_SYSTEM, false, true), true);
+  // 深浅一致 ⇒ 不用白换一次 palette（避免无谓重绘）
+  assert.equal(paletteNeedsRefresh(APPEARANCE_SYSTEM, true, true), false);
+  assert.equal(paletteNeedsRefresh(APPEARANCE_SYSTEM, false, false), false);
+});
+
+test('paletteNeedsRefresh：显式选了深/浅 ⇒ 系统怎么变都不动（用户选择优先）', () => {
+  assert.equal(paletteNeedsRefresh(APPEARANCE_DARK, false, false), false);
+  assert.equal(paletteNeedsRefresh(APPEARANCE_DARK, true, true), false);
+  assert.equal(paletteNeedsRefresh(APPEARANCE_LIGHT, true, true), false);
+  assert.equal(paletteNeedsRefresh(APPEARANCE_LIGHT, false, false), false);
 });
