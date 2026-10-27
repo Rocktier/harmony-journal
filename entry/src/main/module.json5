@@ -14,9 +14,28 @@
     "deliveryWithInstall": true,
     "installationFree": false,
     "pages": "$profile:main_pages",
-    // ⚠️ **本应用零联网：不申请任何权限**（家族铁律 3；RockReader 已验证零权限能过审）。
-    // 日记本比阅读器更纯粹：无字体下载、无文件关联 —— 从第一行代码起就没有联网理由。
-    // 将来若加云同步/广告需重新评估（家族准则：商业化后置，且那是一次大变更）。
+    // ── 权限（2026-10-27 变更）：**麦克风，仅此一项** ────────────────────────
+    // ⚠️ 立场变化必须写清楚：本应用此前是**零权限**（2026-09 起就没申请过任何权限，
+    //    比阅读器更纯粹：无字体下载、无文件关联）。加语音转文字必须开麦克风
+    //    ⇒ 从"零权限"变成"仅麦克风一项"。
+    //    **但"零联网"这条线没有任何变化**：识别用的是系统**离线**模型
+    //    （Core Speech Kit 官方口径：只支持 Chinese + offline model），
+    //    音频只在设备内进引擎，不出设备、不上云。麦克风是本地传感器，不是网络能力。
+    //    类型 user_grant：首次说话时**运行时申请**（AsrService.ensureMic），
+    //    用户拒绝 ⇒ 按钮保持禁用 + 如实说明，绝不偷偷再问。
+    //    将来若加云同步/广告需重新评估（家族准则：商业化后置，且那是一次大变更）。
+    "requestPermissions": [
+      {
+        "name": "ohos.permission.MICROPHONE",
+        "reason": "$string:mic_reason",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
+      }
+    ],
     "abilities": [
       {
         "name": "EntryAbility",

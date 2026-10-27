@@ -14,6 +14,11 @@ import {
 } from '../data/NoteMeta';
 import { capsuleLocked, earliestUnlock, isCapsule } from '../data/NoteMeta';
 import { JournalTemplate, TEMPLATES } from '../data/JournalTemplates';
+import {
+  ASR_ERR_NO_PERMISSION, ASR_PHASE_FAILED, ASR_PHASE_IDLE, ASR_PHASE_LISTENING, ASR_PHASE_UNREADY,
+  asrButtonEnabled, asrNoticeOf
+} from '../data/AsrText';
+import { AsrService } from '../data/AsrService';
 import { CapsuleDateDialog } from '../components/CapsuleDateDialog';
 import { NoteStore } from '../data/NoteStore';
 import { APPEARANCE_SYSTEM, AppearanceMode, nextAppearance } from '../common/Appearance';
@@ -87,6 +92,15 @@ struct Editor {
   @State private canRedo: boolean = false;
   /** 外观（跟随系统 / 深色 / 浅色）—— 编辑器头部有快捷切换 */
   @State private appearance: AppearanceMode = APPEARANCE_SYSTEM;
+  /** 语音转文字阶段：0 空闲 / 1 聆听中 / 2 这台设备用不了 / 3 这一轮出错（可重试） */
+  @State private asrPhase: number = ASR_PHASE_IDLE;
+  /** 聆听中的实时文本（聆听条显示，边说边出字） */
+  @State private asrText: string = '';
+  /** 最近一次错误码（决定提示文案说什么） */
+  @State private asrErr: number = 0;
+  /** 麦克风权限是否已拿到（拿到后才起引擎，避免"弹了权限、引擎还是起不来"） */
+  private asrMicOk: boolean = false;
+  private asr: AsrService = new AsrService();
   private pendingLines: string[] = [];
   private store: NoteStore = getStore();
   private prefs: AppearancePrefs = new AppearancePrefs();
@@ -141,6 +155,8 @@ struct Editor {
     if (!this.saved) {
       this.save();
     }
+    // 离开页面必须释放识别引擎：否则麦克风还被占着，别的 App 录不了音
+    this.asr.release();
   }
 
   /**
@@ -164,6 +180,7 @@ struct Editor {
     this.images.open(ctx.filesDir);
     this.prefs.open(ctx);
     this.appearance = this.prefs.get();
+    this.bindAsr();
     const params: object = router.getParams() as object;
     const holder: EntryParam = params as EntryParam;
     const reqId: string = holder.id !== undefined ? holder.id : '';
@@ -537,6 +554,77 @@ struct Editor {
     } catch (e) {
       hilog.error(DOMAIN, TAG, 'pickImage failed: %{public}s', JSON.stringify(e));
     }
+  }
+
+  /**
+   * 绑定语音服务的三个钩子 → 三个 @State。
+   *
+   * 为什么必须是回调而不是 UI 去读：引擎的 onResult 是异步推的，
+   * UI 侧根本没有"该刷新了"的时机 —— 只有引擎自己知道。
+   */
+  private bindAsr(): void {
+    this.asr.onLive((text: string) => {
+      this.asrText = text;
+    });
+    this.asr.onPhaseChange((phase: number, errCode: number) => {
+      this.asrPhase = phase;
+      this.asrErr = errCode;
+    });
+    this.asr.onDone((text: string) => {
+      this.applyAsrText(text);
+    });
+  }
+
+  /**
+   * 点「语音」：先要麦克风权限，再起引擎。
+   *
+   * ⚠️ 顺序不能反：先起引擎再要权限的话，引擎会在没授权的情况下开麦克风失败，
+   *    报出来的是引擎内部错误码（100220xxxx），对用户毫无意义；
+   *    先要权限，用户看到的是"这个 App 想用麦克风"这件他能判断的事。
+   */
+  private async startAsr(): Promise<void> {
+    const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+    if (!this.asrMicOk) {
+      const ok: boolean = await AsrService.ensureMic(ctx);
+      if (!ok) {
+        hilog.warn(DOMAIN, TAG, 'asr: mic permission denied');
+        this.asrErr = ASR_ERR_NO_PERMISSION;
+        this.asrPhase = ASR_PHASE_FAILED;
+        return;
+      }
+      this.asrMicOk = true;
+    }
+    this.asrText = '';
+    this.asr.start();
+  }
+
+  /** 点「完成」：让引擎把最后一段吐出来，结果从 onDone 回来 */
+  private finishAsr(): void {
+    this.asr.stop();
+  }
+
+  /** 点「取消」：这一轮不要了（不落文本） */
+  private cancelAsr(): void {
+    this.asr.cancel();
+    this.asrText = '';
+  }
+
+  /**
+   * 把识别出的文字插进正文光标处（与手写完全同路）。
+   *
+   * 纪律：**只落文字，不存音频**。
+   *   · 日记是文本 —— 录音会破坏"纯文本 + 全加密"的存储假设，备份体积也会失控；
+   *   · 识别结果就是普通正文 ⇒ 进块模型、进字数、能被搜索到、能撤销（走 save 的快照栈）。
+   * 这是"语音转文字"而不是"语音备忘"，与对标产品 Day One 存音频的定位刻意不同。
+   */
+  private applyAsrText(text: string): void {
+    if (text.length === 0) {
+      hilog.info(DOMAIN, TAG, 'asr: nothing recognized, editor untouched');
+      return;
+    }
+    this.controller.addTextSpan(text, { style: { fontSize: RJ_FS_BODY, fontColor: this.palette.text } });
+    this.onContentChanged();
+    hilog.info(DOMAIN, TAG, 'asr: applied %{public}d chars', text.length);
   }
 
   private save(): void {
@@ -1061,6 +1149,22 @@ struct Editor {
           .onClick(() => {
             this.pickImage();
           })
+        Button('语音', { type: ButtonType.Normal, stateEffect: true })
+          .fontSize(RJ_FS_CAPTION)
+          .fontColor(this.palette.text)
+          .backgroundColor(Color.Transparent)
+          .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_SM, bottom: RJ_SP_SM })
+          // 读屏念"语音"不知所以 —— 显式补语义（照 B/I 键的整改）
+          .accessibilityText('语音转文字')
+          /**
+           * 用不了就**禁用并保留按钮**，而不是藏掉 ——
+           * 藏了用户以为根本没这功能，哪天换台有能力的设备也不会来找。
+           */
+          .enabled(asrButtonEnabled(this.asrPhase, this.capsuleLockedNow))
+          .opacity(asrButtonEnabled(this.asrPhase, this.capsuleLockedNow) ? 1 : 0.4)
+          .onClick(() => {
+            this.startAsr();
+          })
         Blank()
         // 撤销/重做：不可逆的编辑必须有退路（手机上手指一滑就是一段话没了）
         Button('撤销', { type: ButtonType.Normal, stateEffect: true })
@@ -1084,6 +1188,56 @@ struct Editor {
       }
       .width('100%')
       .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_XS, bottom: RJ_SP_XS })
+
+      /**
+       * 语音转文字条（2026-10-27）
+       *
+       * ⚠️ 条件里**直接读 @State**（`this.asrPhase === ...`），不要包进 getter/方法里 ——
+       *    ArkUI V1 的依赖插桩追不到方法体里的 @State 访问，`if` 的分支条件会**按首次求值定型**
+       *    （本族踩了 4 次的家族级坑：状态变了 UI 不更新）。
+       */
+      if (this.asrPhase === ASR_PHASE_LISTENING) {
+        Row() {
+          Text(this.asrText.length > 0 ? this.asrText : '在听…')
+            .fontSize(RJ_FS_CALLOUT)
+            .fontColor(this.palette.text)
+            // ⚠️ 必须 layoutWeight(1)：Row 里的 Text 不给确定宽度会被挤没（本族踩过）
+            .layoutWeight(1)
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+          Button('完成', { type: ButtonType.Normal, stateEffect: true })
+            .fontSize(RJ_FS_CAPTION)
+            .fontColor(this.palette.text)
+            .backgroundColor(Color.Transparent)
+            .padding({ left: RJ_SP_MD, right: RJ_SP_SM, top: RJ_SP_SM, bottom: RJ_SP_SM })
+            .onClick(() => {
+              this.finishAsr();
+            })
+          Button('取消', { type: ButtonType.Normal, stateEffect: true })
+            .fontSize(RJ_FS_CAPTION)
+            .fontColor(this.palette.line)
+            .backgroundColor(Color.Transparent)
+            .padding({ left: RJ_SP_SM, right: RJ_SP_MD, top: RJ_SP_SM, bottom: RJ_SP_SM })
+            .onClick(() => {
+              this.cancelAsr();
+            })
+        }
+        .width('100%')
+        .padding({ left: RJ_SP_MD, right: RJ_SP_SM, top: RJ_SP_XS, bottom: RJ_SP_XS })
+      }
+
+      /**
+       * 出状况了就如实说明。
+       * 文案在纯逻辑层 asrNoticeOf（说人话、给原因、给下一步，不甩错误码）。
+       * 这时候按钮是禁用的，这行字就是"为什么点不了"的答案。
+       */
+      if (this.asrPhase === ASR_PHASE_FAILED || this.asrPhase === ASR_PHASE_UNREADY) {
+        Text(asrNoticeOf(this.asrPhase, this.asrErr))
+          .fontSize(RJ_FS_CAPTION)
+          .fontColor(this.palette.line)
+          .width('100%')
+          .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_XS, bottom: RJ_SP_XS })
+      }
 
       /**
        * 模板条（2026-10-20）：**只在新篇空正文时出现** ——

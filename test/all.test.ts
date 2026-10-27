@@ -11,3 +11,4 @@ import './indexcodec.test.ts';
 import './appearance.test.ts';
 import './palette.test.ts';
 import './journalcard.test.ts';
+import './asr.test.ts';

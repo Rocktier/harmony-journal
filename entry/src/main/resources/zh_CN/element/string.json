@@ -11,6 +11,10 @@
     {
       "name": "EntryAbility_label",
       "value": "Rock私记"
+    },
+    {
+      "name": "mic_reason",
+      "value": "用于把你说的话转成日记文字。识别全程在这台设备上完成，不联网、音频不出设备。"
     }
   ]
 }

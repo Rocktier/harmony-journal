@@ -27,6 +27,10 @@
     {
       "name": "widget_desc",
       "value": "在桌面看一眼今天几号，点一下直接开始写今天。卡片不显示任何日记内容，数据只在这台设备上。"
+    },
+    {
+      "name": "mic_reason",
+      "value": "Used to turn your speech into diary text. Recognition runs entirely on this device and never goes online."
     }
   ]
 }
