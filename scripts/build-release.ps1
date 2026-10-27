@@ -35,9 +35,25 @@ Pop-Location
 if ($exitCode -ne 0) { throw "hvigor assembleApp 失败，退出码 $exitCode" }
 $ErrorActionPreference = "Stop"
 
-$app = Get-ChildItem (Join-Path $root "build\outputs\release") -Filter *.app |
-    Where-Object { $_.Name -like "*signed*" } |
+# ⚠️ 必须精确挑 signed 包：`-like "*signed*"` 会把 *unsigned.app 也匹配上
+#    （"unsigned" 里也含 "signed" 三个字母）⇒ 可能挑到无签名块的文件。
+#    RockReader 在 2026-10-27 因此栽过一次 993（AGC 拒收：Profile 文件非法）。
+$outDir = Join-Path $root "build\outputs\release"
+$app = Get-ChildItem $outDir -Filter "*.app" |
+    Where-Object { $_.Name -like "*signed.app" -and $_.Name -notlike "*unsigned*" } |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
-if (-not $app) { throw "构建结束但未找到 signed .app 产物 —— 视为失败" }
+if (-not $app) { throw "构建结束但未找到 *signed.app 产物 —— 视为失败" }
 "==> 产物：$($app.FullName)（$([math]::Round($app.Length/1KB)) KB）"
 "==> SHA256：$((Get-FileHash $app.FullName -Algorithm SHA256).Hash)"
+
+# ---------------------------------------------------------------- 上传前闸门
+# ⚠️ 2026-10-27：出包后**强制**跑 verify-upload.ps1，不过就不许上传 AGC。
+"==> 跑上传前闸门（verify-upload.ps1）"
+& (Join-Path $root "scripts\verify-upload.ps1") `
+    -AppPath $app.FullName `
+    -ProfilePath "F:\AI\HarmonyOS\keys\rockjournal-v1.p7b" `
+    -ExpectBundle "com.rocktier.rockjournal"
+if ($LASTEXITCODE -ne 0) {
+    throw "上传前闸门未通过（退出码 $LASTEXITCODE）—— **不要上传这个包**，AGC 会报 993"
+}
+"==> 闸门全过，可以上传 AGC。"

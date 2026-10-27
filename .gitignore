@@ -26,6 +26,10 @@ build/
 # 本地配置
 local.properties
 
+# 本地临时产物（截图、验签副本、造数 SQL 等）
+/.tmp/
+/seed-out/
+
 # CI 下载的 OpenHarmony SDK（体积大，不进仓库）
 .ohos-sdk/
 
