@@ -1,4 +1,6 @@
 import { isValidDateKey, isValidNoteId, NoteMeta } from './NoteMeta';
+import { JournalInfo, normalizeJournals } from './Journals';
+import { JournalTemplate, normalizeTemplates } from './JournalTemplates';
 
 /**
  * 索引的解析与写入（**纯逻辑，不引任何 @kit** —— 可被单测直接跑）
@@ -21,13 +23,37 @@ import { isValidDateKey, isValidNoteId, NoteMeta } from './NoteMeta';
  *    取 `id = date` 让老数据原地不动就满足新模型的全部不变量，这是唯一不能省的谨慎。
  */
 export const INDEX_APP: string = 'rockjournal';
-export const INDEX_VERSION: number = 2;
+/**
+ * v1 = 无版本号（主键是 date）；v2 = 一天多篇（主键是 id）；
+ * **v3 = 多日记本 + 自定义模板**（容器多挂两个数组）。
+ *
+ * ⚠️ v2→v3 是**纯增量迁移**：老索引读进来时 journals/templates 缺失
+ *    ⇒ 自动补默认本与空模板表，条目一个不动、文件名一个不改。
+ *    "能不写就不写"是家族铁律 —— 升级不该重写用户的索引。
+ */
+export const INDEX_VERSION: number = 3;
 
 /** 索引文件的容器（导出是为了能构造测试数据，写在私处就测不了） */
 export interface IndexHolder {
   app?: string;
   v?: number;
   items?: NoteMeta[];
+  /** 日记本列表（v3 起；老索引缺失 ⇒ 读出来是 [默认本]） */
+  journals?: JournalInfo[];
+  /** 用户自建模板（v3 起；内置模板不落盘，老索引缺失 ⇒ 空表） */
+  templates?: JournalTemplate[];
+}
+
+/**
+ * 索引的完整内容（条目 + 本 + 模板）
+ *
+ * ⚠️ 为什么要有这个聚合类型：三样东西同生共死、同在一块密文里。
+ *    分开三个解析函数 = 解析三遍 JSON + 三处可能不一致。
+ */
+export interface IndexBundle {
+  items: NoteMeta[];
+  journals: JournalInfo[];
+  templates: JournalTemplate[];
 }
 
 /**
@@ -146,16 +172,71 @@ export function normalizeEntries(raw: NoteMeta[], legacy: boolean): NoteMeta[] {
       tags: sanitizeTags(it.tags),
       // 老索引（1.0.1 及以前）没有 unlockAt ⇒ 按普通日记处理（0）。
       // ⚠️ 判 `> 0` 而不是"是不是数字"：0/负/NaN 都当没有。
-      unlockAt: typeof it.unlockAt === 'number' && it.unlockAt > 0 ? it.unlockAt : 0
+      unlockAt: typeof it.unlockAt === 'number' && it.unlockAt > 0 ? it.unlockAt : 0,
+      // v3 起有 journal（归属哪个本）。老条目没有 ⇒ 空串，
+      // 读取侧 `normalizeJournalRef()` 会兜到默认本 ⇒ **日记绝不会因此消失**。
+      journal: typeof it.journal === 'string' ? it.journal : ''
     };
     out.push(entry);
   }
   return sortEntries(out);
 }
 
-/** 条目 → 索引明文（**永远写 v2**） */
+/**
+ * 解析索引的完整内容（**严格版**：null = 不认得，[] = 认得但没条目）
+ *
+ * ⚠️ 留 v1/v2 通道：老索引没有 journals/templates 字段，
+ *    这里只让 `normalizeJournals`/`normalizeTemplates` 返回默认值，
+ *    **不往容器里回填**（回填 = 升级时重写整个索引 = 白冒一次断电风险）。
+ */
+export function parseIndexBundle(plain: string): IndexBundle | null {
+  if (plain.length === 0) {
+    return { items: [], journals: normalizeJournals(undefined), templates: normalizeTemplates(undefined) };
+  }
+  let holder: IndexHolder | null = null;
+  try {
+    holder = JSON.parse(plain) as IndexHolder;
+  } catch (e) {
+    return null;
+  }
+  if (holder === null) {
+    return null;
+  }
+  if (holder.app !== undefined && holder.app !== INDEX_APP) {
+    return null;
+  }
+  if (holder.items === undefined) {
+    return null;
+  }
+  const raw: NoteMeta[] = Array.isArray(holder.items) ? holder.items : [];
+  const legacy: boolean = holder.v === undefined || holder.v === 1;
+  const items: NoteMeta[] = normalizeEntries(raw, legacy);
+  return {
+    items: items,
+    journals: normalizeJournals(holder.journals),
+    templates: normalizeTemplates(holder.templates)
+  };
+}
+
+/** 条目 → 索引明文（**永远写 v3**） */
 export function encodeIndex(items: NoteMeta[]): string {
-  const holder: IndexHolder = { app: INDEX_APP, v: INDEX_VERSION, items: sortEntries(items) };
+  return encodeIndexBundle({ items: items, journals: [], templates: [] });
+}
+
+/**
+ * 完整内容 → 索引明文
+ *
+ * ⚠️ 默认参数是**向后兼容**用的：既有调用点与单测只传 items 也能过
+ *    （那时本与模板按默认写出来：只有默认本、没有自定义模板 —— 与老索引等价）。
+ */
+export function encodeIndexBundle(bundle: IndexBundle): string {
+  const holder: IndexHolder = {
+    app: INDEX_APP,
+    v: INDEX_VERSION,
+    items: sortEntries(bundle.items),
+    journals: normalizeJournals(bundle.journals),
+    templates: normalizeTemplates(bundle.templates)
+  };
   return JSON.stringify(holder);
 }
 

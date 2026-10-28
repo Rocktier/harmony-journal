@@ -6,6 +6,8 @@
     "pages/Capsule",
     "pages/Settings",
     "pages/RockStats",
-    "pages/Privacy"
+    "pages/Privacy",
+    "pages/Journals",
+    "pages/Templates"
   ]
 }

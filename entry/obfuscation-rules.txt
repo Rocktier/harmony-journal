@@ -25,6 +25,16 @@
 ./src/main/ets/data/NoteBlocks.ets
 ./src/main/ets/data/BackupService.ets
 
+# ── ASR 回调保护（2026-10-28，1.0.6 语音转文字）──────────────────────────
+# ⚠️ 为什么这里也要 -keep：AsrService 里的 RecognitionListener 是**系统接口的字面量实现**，
+#    它的五个方法名（onStart/onEvent/onResult/onComplete/onError）**由系统 SDK 按名字调用**。
+#    属性混淆一旦把它们改名，系统回调就再也找不到入口 ⇒ 语音功能静默失效
+#    （现象：按钮能点、界面进"在听"、但永远等不到文字，且没有任何报错）。
+#    这类"按名反射"的跨模块契约与序列化字段是同一类风险 ⇒ 同样用文件级 -keep 兜住。
+#    代价：AsrService.ets 不参与混淆（不到 12KB，体积影响可忽略）。
+-keep
+./src/main/ets/data/AsrService.ets
+
 # ⚠️ 存量：已上架的 1.0.2 就是用 m5/l5/n5 写盘的。本版 -keep 只保证"以后写明文"，
 #    读旧数据靠 IndexCodec 的 fallback 链（明文优先，m5/l5/n5 兜底）。
 #    若将来这三个文件被合并/改名，本条 -keep 必须同步改，否则保护失效。

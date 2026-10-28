@@ -13,7 +13,13 @@ import {
   MOODS, MOOD_CUSTOM_ID, Mood, NoteMeta, dateKeyOf, isValidDateKey, parseTags, tagsToText, timeOfDay, todayKey
 } from '../data/NoteMeta';
 import { capsuleLocked, earliestUnlock, isCapsule } from '../data/NoteMeta';
-import { JournalTemplate, TEMPLATES } from '../data/JournalTemplates';
+import {
+  JOURNAL_MAIN_ID, JournalInfo, journalEmojiOf, journalIdOf, journalNameOf, journalById as journalInfoById
+} from '../data/Journals';
+import {
+  JournalTemplate, allTemplates, templateTextOf
+} from '../data/JournalTemplates';
+import { promptOfDate } from '../data/Prompts';
 import {
   ASR_ERR_NO_PERMISSION, ASR_PHASE_FAILED, ASR_PHASE_IDLE, ASR_PHASE_LISTENING, ASR_PHASE_UNREADY,
   asrButtonEnabled, asrNoticeOf
@@ -77,6 +83,31 @@ struct Editor {
   @State private capsuleLockedNow: boolean = false;
   /** 模板条是否展开（新篇空正文时才给入口） */
   @State private templatesOpen: boolean = false;
+  /**
+   * 这篇属于哪个本（1.0.6 多本分册）；空串 = 默认本（读取侧会兜）。
+   *
+   * ⚠️ 新篇的归属来自**打开它时所在的本**（Index 传进来），
+   *    这是"我在工作本里点写今天 ⇒ 这篇就进工作本"的直观因果。
+   */
+  @State private journalId: string = '';
+  @State private journals: JournalInfo[] = [];
+  /** 本选择行是否展开（与标签/模板条同款的"展开/收起"，不占常驻空间） */
+  @State private journalPickerOpen: boolean = false;
+  /** 用户自建模板（模板条要把内置与自建一起显示） */
+  @State private customTemplates: JournalTemplate[] = [];
+  /**
+   * 模板条真正遍历的列表（内置 + 自建）
+   *
+   * ⚠️ 必须是 @State 而不是在 build 里现算 `allTemplates(...)`：
+   *    每次 build 都返回新数组会让 ForEach 认为数据变了 ⇒ 无谓地全量重建。
+   */
+  @State private templateList: JournalTemplate[] = [];
+  /**
+   * 今日提示（1.0.6）：新篇空正文时给的一句切口。
+   *
+   * ⚠️ 只在**空正文**时显示：用户已经在写了就别在旁边出主意（那是干扰）。
+   */
+  @State private todayPrompt: string = '';
   /**
    * 动效状态（2026-10-22 评审 P0-1 动效包）：
    * favKick/saveFlash 是"一拍即走"的脉冲量 —— 点击时置 true，
@@ -185,9 +216,16 @@ struct Editor {
     const holder: EntryParam = params as EntryParam;
     const reqId: string = holder.id !== undefined ? holder.id : '';
     const rawDate: string = holder.date !== undefined ? holder.date : '';
+    // 打开时所在的本（新篇落进它；老篇一律用它自己的归属，不跟随）
+    const reqJournal: string = holder.journal !== undefined ? holder.journal : '';
     // ⚠️ N3 修复：原来用 `toISOString()`（UTC）回退 —— 与 `todayKey()`（本地时区）不一致，
     //    导致每天 00:00~08:00 之间新建会锁到**前一天**。"今天"只能有一个定义。
     const fallbackDate: string = isValidDateKey(rawDate) ? rawDate : todayKey();
+    // 本 / 模板 / 今日提示：都从内存索引里来（零 IO）
+    this.journals = this.store.journalList();
+    this.customTemplates = this.store.customTemplates();
+    this.templateList = allTemplates(this.customTemplates);
+    this.todayPrompt = promptOfDate(fallbackDate);
 
     // 打开目标：**优先认 id**（点搜索结果要精确命中那篇），否则打开这天最新的一篇
     let target: NoteMeta | null = reqId.length > 0 ? this.store.byId(reqId) : null;
@@ -206,12 +244,15 @@ struct Editor {
     if (target !== null) {
       this.date = target.date;
       this.entryId = target.id;
+      // 老篇的归属**跟着它自己走**（在别的本里打开它，不该被搬到当前本）
+      this.journalId = journalIdOf(target);
       this.applyCapsuleMeta(target);
       this.loadEntry(target.id, ctx);
     } else {
       // 这天还没有任何一篇 ⇒ 新建（先占位 id，写了才会真正落盘）
       this.date = fallbackDate;
       this.entryId = this.store.newEntryId();
+      this.journalId = reqJournal;
       this.capsuleOn = false;
       this.capsuleUnlockAt = 0;
       this.capsuleLockedNow = false;
@@ -332,6 +373,57 @@ struct Editor {
    * ⚠️ 模板只是**开头**，不是表单 —— 用户改哪行删哪行都随他，
    *    保存路径与手写完全同路（没有任何"模板标记"落盘）。
    */
+  /**
+   * 用今日提示开头（1.0.6）：把那句话灌进正文当第一行。
+   *
+   * ⚠️ 与模板的分工：模板是**固定的套路**（天天一样，用来养节奏），
+   *    提示是**每天换的一句**（用来打破惯性）。所以提示用过一次就收起 ——
+   *    再按一次只会得到两段一模一样的话，那不是提示，是噪音。
+   */
+  private applyPrompt(): void {
+    const text: string = this.todayPrompt;
+    if (text.length === 0) {
+      return;
+    }
+    this.pendingLines = [text];
+    this.restore();
+    this.words = text.length;
+    this.saved = false;
+    this.scheduleSave();
+    this.todayPrompt = '';
+    hilog.info(DOMAIN, TAG, 'today prompt applied');
+  }
+
+  /**
+   * 换这篇所属的本（1.0.6）
+   *
+   * ⚠️ 换本必须**立刻保存**：归属只在保存路径落盘，
+   *    等自动保存防抖到期之前用户可能已经返回了 ⇒ 换个本却没生效。
+   *    （新篇还空着时 save() 会走"空则删除"分支，那也没关系 ——
+   *     空条目本就不该占索引；写了字之后第一次保存就带上归属。）
+   */
+  private setJournal(id: string): void {
+    if (this.journalId === id) {
+      this.journalPickerOpen = false;
+      return;
+    }
+    this.journalId = id;
+    this.journalPickerOpen = false;
+    this.save();
+    hilog.info(DOMAIN, TAG, 'entry moved to journal: [%{public}s]', id);
+  }
+
+  /**
+   * 当前所属的本来显示（拿不到就给默认本）
+   *
+   * ⚠️ 空串与 'main' 在这里必须等价：从"全部"视图进来的新篇拿到的是空串，
+   *    而本列表里默认本的 id 是 'main' —— 不归一就会显示成"未命名"。
+   */
+  private currentJournalInfo(): JournalInfo | null {
+    const id: string = this.journalId.length > 0 ? this.journalId : JOURNAL_MAIN_ID;
+    return journalInfoById(this.journals, id);
+  }
+
   private applyTemplate(t: JournalTemplate): void {
     this.pendingLines = t.lines.slice();
     this.restore();
@@ -659,8 +751,9 @@ struct Editor {
     const saveMood: string = sealed ? '' : this.mood;
     const saveMoodText: string = sealed ? '' : this.moodText;
     const saveTags: string[] = sealed ? [] : parseTags(this.tagsText);
+    // 归属跟着这篇走（新篇在保存的这一刻才真正落进它该去的本）
     const ok: boolean = this.store.saveEntry(this.entryId, this.date, withImages, saveMood, saveMoodText,
-      this.favorite, saveTags, unlockAt);
+      this.favorite, saveTags, unlockAt, this.journalId);
     this.saved = ok;
     this.words = wordCountOf(blocks);
     if (sealed) {
@@ -1240,40 +1333,128 @@ struct Editor {
       }
 
       /**
-       * 模板条（2026-10-20）：**只在新篇空正文时出现** ——
-       * 空白页是写日记的最大阻力，给个开头；写起来了就撤，不打扰。
+       * 归属本（1.0.6）：**始终在**，收起时只占一个 chip。
+       *
+       * ⚠️ 为什么常驻而不是藏在菜单里："这篇会写进哪个本"是写之前就该知道的事，
+       *    写完了才发现进错本，搬一次很烦。常驻一个小 chip 的代价换来不返工。
+       * ⚠️ 锁着的胶囊不给换本：搬家要重写索引，而锁着的信不该被任何写操作碰。
+       */
+      if (!this.capsuleLockedNow) {
+        Scroll() {
+          Row() {
+            Button(journalEmojiOf(this.currentJournalInfo()) + ' ' + journalNameOf(this.currentJournalInfo()) +
+              (this.journalPickerOpen ? ' ▾' : ' ▸'),
+              { type: ButtonType.Normal, stateEffect: true })
+              .fontSize(RJ_FS_CAPTION)
+              .fontColor(this.journalPickerOpen ? this.palette.brand : this.palette.text3)
+              .backgroundColor(Color.Transparent)
+              .padding({ left: RJ_SP_SM, right: RJ_SP_MD })
+              .onClick(() => {
+                this.journalPickerOpen = !this.journalPickerOpen;
+              })
+            if (this.journalPickerOpen) {
+              ForEach(this.journals, (j: JournalInfo) => {
+                Button(journalEmojiOf(j) + ' ' + journalNameOf(j), { type: ButtonType.Normal, stateEffect: true })
+                  .fontSize(RJ_FS_CAPTION)
+                  // 当前所属的那个用墨底反白（与筛选 chip 同款"选中 = 墨"）
+                  .fontColor(this.journalId === j.id ? this.palette.bg : this.palette.text2)
+                  .backgroundColor(this.journalId === j.id ? this.palette.accent : this.palette.card)
+                  .borderRadius(RJ_RADIUS_SM)
+                  .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_XS, bottom: RJ_SP_XS })
+                  .margin({ left: RJ_SP_SM })
+                  .onClick(() => {
+                    this.setJournal(j.id);
+                  })
+                // key 带选中态（家族第 4 次同型坑：key 不变 ⇒ 高亮停在旧值）
+              }, (j: JournalInfo) => j.id + (this.journalId === j.id ? ':on' : ''))
+            }
+          }
+        }
+        .scrollable(ScrollDirection.Horizontal)
+        .scrollBar(BarState.Off)
+        .width('100%')
+        .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_XS, bottom: RJ_SP_XS })
+      }
+
+      /**
+       * 今日提示（1.0.6）：**只在空正文时出现** ——
+       * 用户已经在写了就别在旁边出主意（那是干扰），空白页才需要那一句切口。
+       */
+      if (this.words === 0 && this.imgRefs.length === 0 && !this.capsuleLockedNow && this.todayPrompt.length > 0) {
+        Row() {
+          Text('今日提示')
+            .fontSize(RJ_FS_META)
+            .fontFamily('monospace')
+            .fontColor(this.palette.text3)
+          Text(this.todayPrompt)
+            .fontSize(RJ_FS_CAPTION)
+            .fontColor(this.palette.text2)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .layoutWeight(1)
+            .margin({ left: RJ_SP_MD })
+          Button('用它开头', { type: ButtonType.Normal, stateEffect: true })
+            .fontSize(RJ_FS_CAPTION)
+            .fontColor(this.palette.brand)
+            .backgroundColor(Color.Transparent)
+            .padding({ left: RJ_SP_SM, right: RJ_SP_SM })
+            .onClick(() => {
+              this.applyPrompt();
+            })
+        }
+        .width('100%')
+        .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_XS, bottom: RJ_SP_XS })
+      }
+
+      /**
+       * 模板条（2026-10-20 沿用；1.0.6 加自定义模板与管理入口）：
+       * **只在新篇空正文时出现** —— 空白页是写日记的最大阻力，给个开头；
+       * 写起来了就撤，不打扰。
        * ⚠️ 判据用 words+imgRefs（实时状态）而不是 entryId 是否落盘：
        *    删光正文的旧篇也该能重新套模板。
        */
       if (this.words === 0 && this.imgRefs.length === 0 && !this.capsuleLockedNow) {
-        Row() {
-          Button(this.templatesOpen ? '模板 ▾' : '模板 ▸', { type: ButtonType.Normal, stateEffect: true })
-            .fontSize(RJ_FS_CAPTION)
-            .fontColor(this.templatesOpen ? this.palette.brand : this.palette.text3)
-            .backgroundColor(Color.Transparent)
-            .padding({ left: RJ_SP_SM, right: RJ_SP_MD })
-            .onClick(() => {
-              this.templatesOpen = !this.templatesOpen;
-            })
-          if (this.templatesOpen) {
-            ForEach(TEMPLATES, (t: JournalTemplate) => {
-              Button(t.label, { type: ButtonType.Normal, stateEffect: true })
+        Scroll() {
+          Row() {
+            Button(this.templatesOpen ? '模板 ▾' : '模板 ▸', { type: ButtonType.Normal, stateEffect: true })
+              .fontSize(RJ_FS_CAPTION)
+              .fontColor(this.templatesOpen ? this.palette.brand : this.palette.text3)
+              .backgroundColor(Color.Transparent)
+              .padding({ left: RJ_SP_SM, right: RJ_SP_MD })
+              .onClick(() => {
+                this.templatesOpen = !this.templatesOpen;
+              })
+            if (this.templatesOpen) {
+              ForEach(this.templateList, (t: JournalTemplate) => {
+                Button(t.label, { type: ButtonType.Normal, stateEffect: true })
+                  .fontSize(RJ_FS_CAPTION)
+                  .fontColor(this.palette.text2)
+                  .backgroundColor(this.palette.card)
+                  .borderRadius(RJ_RADIUS_SM)
+                  .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_XS, bottom: RJ_SP_XS })
+                  .margin({ left: RJ_SP_SM })
+                  // 模板 chips 依次浮现（P0-1）
+                  .transition(TransitionEffect.OPACITY
+                    .combine(TransitionEffect.translate({ y: 6 }))
+                    .animation({ duration: 200, curve: Curve.EaseOut, delay: 40 }))
+                  .onClick(() => {
+                    this.applyTemplate(t);
+                  })
+              }, (t: JournalTemplate) => t.id)
+              // 自定义模板的去处（入口跟在模板后面 —— 想改模板的人正在看这一排）
+              Button('管理', { type: ButtonType.Normal, stateEffect: true })
                 .fontSize(RJ_FS_CAPTION)
-                .fontColor(this.palette.text2)
-                .backgroundColor(this.palette.card)
-                .borderRadius(RJ_RADIUS_SM)
-                .padding({ left: RJ_SP_MD, right: RJ_SP_MD, top: RJ_SP_XS, bottom: RJ_SP_XS })
-                .margin({ left: RJ_SP_SM })
-                // 模板 chips 依次浮现（P0-1）
-                .transition(TransitionEffect.OPACITY
-                  .combine(TransitionEffect.translate({ y: 6 }))
-                  .animation({ duration: 200, curve: Curve.EaseOut, delay: 40 }))
+                .fontColor(this.palette.text3)
+                .backgroundColor(Color.Transparent)
+                .padding({ left: RJ_SP_MD, right: RJ_SP_SM })
                 .onClick(() => {
-                  this.applyTemplate(t);
+                  router.pushUrl({ url: 'pages/Templates' });
                 })
-            }, (t: JournalTemplate) => t.id)
+            }
           }
         }
+        .scrollable(ScrollDirection.Horizontal)
+        .scrollBar(BarState.Off)
         .width('100%')
         .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, top: RJ_SP_XS, bottom: RJ_SP_SM })
       }
@@ -1399,6 +1580,8 @@ struct Editor {
 interface EntryParam {
   id?: string;
   date?: string;
+  /** 打开时所在的日记本（新篇落进它；空 = 默认本） */
+  journal?: string;
 }
 
 /**

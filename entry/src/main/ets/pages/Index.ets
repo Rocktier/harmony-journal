@@ -9,6 +9,9 @@ import { TimelineDataSource } from '../common/TimelineDataSource';
 import { ImageStore } from '../data/ImageStore';
 import { CARD_INTENT_WRITE_TODAY } from '../data/JournalCardData';
 import {
+  JOURNAL_MAIN_ID, JournalInfo, journalCounts, journalEmojiOf, journalNameOf, journalOf
+} from '../data/Journals';
+import {
   JournalStats, MOODS, MonthCell, Mood, NoteMeta, NoteText, SearchHit, TimelineRow, collectTags,
   capsuleBadge, capsuleLocked, computeStats, countsForStats, filterMetas, isCapsule, moodById,
   monthGrid, monthOf, monthRowCount, onThisDayDates, previewText, searchNotes, shiftMonth, timeOfDay,
@@ -46,6 +49,8 @@ const RECALL_PREVIEW_LEN: number = 40;
 interface EntryParamPayload {
   date: string;
   id: string;
+  /** 打开时所在的日记本（新篇落进它；空串 = 默认本） */
+  journal: string;
 }
 
 /** 「那年今日」的一张卡片（预先算好，渲染时不再做任何 IO） */
@@ -152,6 +157,23 @@ struct Index {
    * 正在生效时入口会显示"标签 · #xxx"，免得"筛着却看不出来"。
    */
   @State private tagsExpanded: boolean = false;
+  /**
+   * 当前所在的日记本（**空串 = 全部**）。
+   *
+   * ⚠️ 为什么切本会影响**月历热力图与统计**：
+   *    用户的心智是"我翻开了工作本" —— 那个月历就应该是工作本的月历，
+   *    连续天数也该是工作本的连续天数（工作本断了不代表人没在写）。
+   *    所以切本不是"加一个筛选条件"，而是**换了一个库在看法**；
+   *    实现上就在 `reload()` 最前面把 metas 换成当本的，后面热力/统计/那年今日
+   *    全部自动跟着变，一处生效、零遗漏。
+   *
+   * ⚠️ 不持久化：本的选择是"这次想看哪个"，下次打开回到全部更符合直觉
+   *    （一进来就落在某个本里，会让人以为日记变少了）。
+   */
+  @State private currentJournal: string = '';
+  @State private journals: JournalInfo[] = [];
+  /** 各本的篇数（chip 上的计数；换新对象才能触发依赖它的 chip 重渲染） */
+  @State private jCounts: Record<string, number> = {};
   private store: NoteStore = getStore();
   private images: ImageStore = new ImageStore();
   /** 时间轴的惰性数据源（换数据必须 reload 才会重画） */
@@ -180,6 +202,22 @@ struct Index {
     }
     this.mode = m;
     this.viewPrefs.set(m);
+  }
+
+  /**
+   * 切到某个日记本（空串 = 全部）
+   *
+   * ⚠️ 走 `reload()` 而不是只灌 dataSource：切本要连**月历热力图、连续天数、
+   * 那年今日**一起换（见 `currentJournal` 声明处的取舍），只刷时间轴会
+   * 留下"列表变了、日历没变"的半截状态。
+   */
+  private setJournal(id: string): void {
+    if (this.currentJournal === id) {
+      return;
+    }
+    this.currentJournal = id;
+    this.reload();
+    hilog.info(DOMAIN, TAG, 'switch journal: [%{public}s]', id);
   }
 
   /**
@@ -224,7 +262,12 @@ struct Index {
   }
 
   private reload(): void {
-    this.metas = this.store.list();
+    // ① 先取全量（本列表与"每个本各多少篇"必须基于全量算）
+    const all: NoteMeta[] = this.store.list();
+    this.journals = this.store.journalList();
+    this.jCounts = journalCounts(this.journals, all);
+    // ② 再看当本的 —— 后面热力图/统计/那年今日全部自动是当本的
+    this.metas = journalOf(all, this.currentJournal);
     const nowMs: number = Date.now();
     // 热力数据源必须与 metas 同批更新（换新对象才会触发依赖它的 Grid 重渲染）
     const heat: Record<string, number> = {};
@@ -480,7 +523,8 @@ struct Index {
         return;
       }
     }
-    const payload: EntryParamPayload = { date: date, id: id };
+    // 带上当前所在的本：新篇落进它（"在工作本里点写今天 ⇒ 进工作本"的因果）
+    const payload: EntryParamPayload = { date: date, id: id, journal: this.currentJournal };
     router.pushUrl({ url: 'pages/Editor', params: payload }).catch((e: Error) => {
       hilog.error(DOMAIN, TAG, 'pushUrl failed: %{public}s', JSON.stringify(e));
     });
@@ -705,6 +749,50 @@ struct Index {
       }
       .width('100%')
       .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_MD })
+
+      /**
+       * 日记本切换条（1.0.6 多本分册）
+       *
+       * ⚠️ 为什么只有一本时**不显示本列表**（仍保留管理入口）：
+       *    新用户的全部日记本来就在默认本里，"📔 全部 / 📔 生活"两个 chip
+       *    指的是同一批日记 —— 那是噪音，还凭空白占一行。
+       *    建了第二本之后这条才出现，正好也是它开始有意义的时刻。
+       *
+       * ⚠️ 横向 Scroll 而不是换行：本的数量不定（最多 8），
+       *    换行会让高度忽变（切本时列表上下跳），横向滚动则高度恒定。
+       *    结构与标签展开条完全一致（那里已验证可用）。
+       */
+      Scroll() {
+        Row() {
+          if (this.journals.length > 1) {
+            // 「全部」：与收藏 chip 同款的分写法（@Builder 值参数不随 @State 重跑，
+            // 直接传 `this.currentJournal === ''` 会导致点了不变色 —— 家族第 4 次同型坑）
+            if (this.currentJournal === '') {
+              this.chip('全部', true, () => {
+                this.setJournal('');
+              })
+            } else {
+              this.chip('全部', false, () => {
+                this.setJournal('');
+              })
+            }
+            ForEach(this.journals, (j: JournalInfo) => {
+              this.chip(journalEmojiOf(j) + ' ' + journalNameOf(j), this.currentJournal === j.id, () => {
+                this.setJournal(j.id);
+              })
+              // key 带选中态：选中变化 ⇒ key 变 ⇒ ForEach 重建 ⇒ 高亮一定跟上
+            }, (j: JournalInfo) => j.id + (this.currentJournal === j.id ? ':on' : ''))
+          }
+          // 管理入口（**始终在**：只有一个本时用户也要能建新本）
+          this.chip('管理本', false, () => {
+            router.pushUrl({ url: 'pages/Journals' });
+          })
+        }
+      }
+      .scrollable(ScrollDirection.Horizontal)
+      .scrollBar(BarState.Off)
+      .width('100%')
+      .padding({ left: RJ_SP_XXL, right: RJ_SP_XXL, bottom: RJ_SP_SM })
 
       // 筛选条：数据全在索引里 ⇒ 零 IO 成本；几百篇之后这是"还能不能用"的分界线
       Row() {
@@ -996,13 +1084,29 @@ struct Index {
         //    原来 if 里现算 this.metas.length，实测有数据也不消失（见声明处注释）。
         if (this.monthEmpty) {
           Column() {
-            Text('从今天开始')
-              .fontSize(RJ_FS_CALLOUT)
-              .fontColor(this.palette.text3)
-            Text('点上面的「写今天」，写下第一篇')
-              .fontSize(RJ_FS_CAPTION)
-              .fontColor(this.palette.text3)
-              .margin({ top: RJ_SP_SM })
+            /**
+             * ⚠️ 空态文案必须**分两种**（2026-10-27 模拟器实拍抓到）：
+             *    切到一个空的本，却看到"从今天开始 / 写下第一篇"，
+             *    用户会以为日记丢了（他明明写了一篇，只是在别的本里）。
+             *    ——"全部是空的"和"这个本是空的"是两件不同的事，话也得不一样。
+             */
+            if (this.currentJournal.length > 0) {
+              Text('这个本还没有日记')
+                .fontSize(RJ_FS_CALLOUT)
+                .fontColor(this.palette.text3)
+              Text('点「写今天」写一篇进来，或切回「全部」看全部日记')
+                .fontSize(RJ_FS_CAPTION)
+                .fontColor(this.palette.text3)
+                .margin({ top: RJ_SP_SM })
+            } else {
+              Text('从今天开始')
+                .fontSize(RJ_FS_CALLOUT)
+                .fontColor(this.palette.text3)
+              Text('点上面的「写今天」，写下第一篇')
+                .fontSize(RJ_FS_CAPTION)
+                .fontColor(this.palette.text3)
+                .margin({ top: RJ_SP_SM })
+            }
           }
           .width('100%')
           .margin({ top: RJ_SP_VOID_L })

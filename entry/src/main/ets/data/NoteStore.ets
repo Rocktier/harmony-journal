@@ -5,7 +5,9 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 
 import { Block, blocksToJson, firstImgRef, jsonToBlocks, plainOfBlocks, wordCountOf } from './NoteBlocks';
 import { NoteMeta, PREVIEW_LEN, newNoteId, previewText } from './NoteMeta';
-import { encodeIndex, parseIndexStrict, sanitizeTags, sortEntries } from './IndexCodec';
+import { encodeIndexBundle, IndexBundle, parseIndexBundle, sanitizeTags, sortEntries } from './IndexCodec';
+import { JournalInfo, copyWithJournal, defaultJournals, moveEntries } from './Journals';
+import { JournalTemplate } from './JournalTemplates';
 import { BackupItem, PlannedNote, planImport } from './BackupService';
 import { VaultService } from './VaultService';
 
@@ -33,6 +35,18 @@ export class NoteStore {
   private root: string = '';
   private vault: VaultService = new VaultService();
   private index: NoteMeta[] = [];
+  /**
+   * 日记本列表（1.0.6；与索引同生共死，读不到时是 [默认本]）
+   *
+   * ⚠️ 初始值**必须是 [默认本] 而不是空数组**（2026-10-27 模拟器实拍抓到）：
+   *    首次设置主密码的路径**不经过 `loadIndex()`**（索引文件还不存在），
+   *    于是本列表会一路是空的 —— 表现就是本管理页显示"0/8"、一个本都没有。
+   *    "至少有一个本"是本功能的结构性前提（删本要有地方搬），
+   *    宁可在内存里先备好默认本，也不能让"没有本"这个状态存在。
+   */
+  private journals: JournalInfo[] = defaultJournals();
+  /** 用户自建模板（1.0.6；内置模板不落盘，空数组是它的正常初始态） */
+  private templates: JournalTemplate[] = [];
 
   /** 初始化目录（不解密任何东西） */
   open(ctx: common.UIAbilityContext): void {
@@ -80,6 +94,9 @@ export class NoteStore {
     const p: string = this.indexPath();
     if (!fs.accessSync(p)) {
       this.index = [];
+      // 新用户也要有默认本（界面上第一个 chip 就是它）
+      this.journals = defaultJournals();
+      this.templates = [];
       return true;
     }
     const file: fs.File = fs.openSync(p, fs.OpenMode.READ_ONLY);
@@ -94,13 +111,20 @@ export class NoteStore {
       }
       const text: string = new util.TextDecoder().decodeToString(plain);
       // ★ 严格解析：认不出来或已损坏 → null → 必须报错拦住（不能当"空库"放行，见 bug 甲）
-      const list: NoteMeta[] | null = parseIndexStrict(text);
-      if (list === null) {
+      const bundle: IndexBundle | null = parseIndexBundle(text);
+      if (bundle === null) {
         hilog.error(DOMAIN, TAG, 'index is not a valid rkindex (corrupted or foreign)');
         this.index = [];
+        this.journals = defaultJournals();
+        this.templates = [];
         return false;
       }
-      this.index = list;
+      this.index = bundle.items;
+      // 老索引没有 journals/templates ⇒ 拿到默认的 [默认本] 与空模板表，
+      // 条目一篇不动（v2→v3 是纯增量迁移，见 IndexCodec）
+      this.journals = bundle.journals;
+      this.templates = bundle.templates;
+      hilog.info(DOMAIN, TAG, 'index loaded: %{public}d notes, %{public}d journals', this.index.length, this.journals.length);
       return true;
     } catch (e) {
       hilog.error(DOMAIN, TAG, 'loadIndex failed: %{public}s', JSON.stringify(e));
@@ -126,7 +150,8 @@ export class NoteStore {
    */
   saveIndex(): boolean {
     try {
-      const json: string = encodeIndex(this.index);
+      const bundle: IndexBundle = { items: this.index, journals: this.journals, templates: this.templates };
+      const json: string = encodeIndexBundle(bundle);
       const bytes: Uint8Array = this.utf8(json);
       const enc: Uint8Array | null = this.vault.encrypt(bytes);
       if (enc === null) {
@@ -173,8 +198,13 @@ export class NoteStore {
    *   索引整块可读，这些字段任何一个漏进索引，锁就形同虚设（2026-10-20
    *   同质化整改的安全边界，单测 capsule.test.ts 锁着这条纪律）。
    */
+  /**
+   * @param journal 归属哪个本（1.0.6）。
+   *   **空串 = 沿用这篇原来的归属**（老篇保存时不该被搬走）；
+   *   新篇则必须由调用方显式传入"当前所在的本"，否则会掉进默认本。
+   */
   saveEntry(id: string, date: string, blocks: Block[], mood: string, moodText: string,
-    favorite: boolean, tags: string[], unlockAt: number = 0): boolean {
+    favorite: boolean, tags: string[], unlockAt: number = 0, journal: string = ''): boolean {
     try {
       let entryId: string = id;
       if (entryId.length === 0) {
@@ -201,7 +231,9 @@ export class NoteStore {
         imgRef: sealed ? '' : firstImgRef(blocks),
         favorite: favorite,
         tags: sealed ? [] : sanitizeTags(tags),
-        unlockAt: unlockAt
+        unlockAt: unlockAt,
+        // 没传归属 ⇒ 沿用原来的（prev 也没有就是空串，读取侧兜到默认本）
+        journal: journal.length > 0 ? journal : (prev !== null ? prev.journal : '')
       });
       return this.saveIndex();
     } catch (e) {
@@ -338,6 +370,46 @@ export class NoteStore {
     return sortEntries(this.index);
   }
 
+  // ── 日记本（1.0.6 多本分册）──────────────────────────────────────────
+  //
+  // ⚠️ 本与模板都只活在索引里（与条目同生共死），所以这里的每个写操作
+  //    都必须由调用方随后调 `saveIndex()` —— 单独存盘会让两者不一致。
+
+  /** 全部日记本（第一项恒为默认本） */
+  journalList(): JournalInfo[] {
+    return this.journals;
+  }
+
+  /** 用户自建模板（不含内置） */
+  customTemplates(): JournalTemplate[] {
+    return this.templates;
+  }
+
+  /** 换上新的本列表（增删改本的唯一入口） */
+  setJournals(list: JournalInfo[]): void {
+    this.journals = list;
+  }
+
+  /** 换上新的自定义模板列表 */
+  setTemplates(list: JournalTemplate[]): void {
+    this.templates = list;
+  }
+
+  /**
+   * 把一批日记改挂到另一个本（删本时的搬运动作）
+   *
+   * ⚠️ 只改内存里的条目；落盘由调用方调 `saveIndex()`。
+   *    与读取侧 `normalizeJournalRef` 的兜底共同保证"删本不丢日记"。
+   */
+  moveEntriesTo(ids: string[], journalId: string): void {
+    this.index = moveEntries(this.index, ids, journalId);
+  }
+
+  /** 改单篇的归属（在编辑器里换本时用） */
+  setEntryJournal(id: string, journalId: string): void {
+    this.index = moveEntries(this.index, [id], journalId);
+  }
+
   /**
    * 有日记的日期（月视图打点用）。
    * ⚠️ 一天多篇之后同一个 date 会出现多次 ⇒ **必须去重**，否则未来按它做统计会算重。
@@ -391,7 +463,7 @@ export class NoteStore {
    * @returns >=0 = 成功导入篇数；-1 = 索引落盘失败（内存已回滚，
    *   磁盘上可能留下孤儿正文文件 —— 无害：下次导入同备份会按 id 重写它）
    */
-  importAll(items: BackupItem[]): number {
+  importAll(items: BackupItem[], journalId: string = ''): number {
     const plan: PlannedNote[] = planImport(this.index, items, Date.now());
     const before: NoteMeta[] = this.index; // concat 产出新数组 ⇒ 引用快照即回滚点
     const metas: NoteMeta[] = [];
@@ -401,7 +473,16 @@ export class NoteStore {
         hilog.error(DOMAIN, TAG, 'importAll: body write failed, skip %{public}s', plan[i].id);
         continue;
       }
-      metas.push(plan[i].meta);
+      /**
+       * 导入归属（1.0.6）：**一律落到指定本（空串 = 默认本）**，不沿用备份里的旧归属。
+       *
+       * ⚠️ 为什么不恢复备份里记的分册结构：那需要"本必须在"的前提。
+       *    若备份里的本在这台设备上不存在，篇目就会指向一个不存在的本 ——
+       *    读取侧只对空串兜底，**指向不存在本 = 这篇永远显示不出来**（比丢还严重）。
+       *    恢复本列表是另一件事（本列表也在同一份备份里才谈得上），
+       *    1.0.6 先取最稳的口径：导入到用户当前所在的本。
+       */
+      metas.push(copyWithJournal(plan[i].meta, journalId));
       n++;
     }
     if (metas.length === 0) {

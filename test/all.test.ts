@@ -12,3 +12,6 @@ import './appearance.test.ts';
 import './palette.test.ts';
 import './journalcard.test.ts';
 import './asr.test.ts';
+import './journals.test.ts';
+import './prompts.test.ts';
+import './templates.test.ts';

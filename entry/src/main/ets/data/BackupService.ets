@@ -198,7 +198,18 @@ export function parseBackup(plain: Uint8Array): BackupItem[] {
       imgRef: src !== undefined && typeof src.imgRef === 'string' ? src.imgRef : '',
       favorite: src !== undefined && src.favorite === true,
       tags: sanitizeTags(src !== undefined ? src.tags : undefined),
-      unlockAt: unlockAt
+      unlockAt: unlockAt,
+      /**
+       * 归属哪个本（1.0.6）：老备份没有这个字段 ⇒ 空串 ⇒ 导入到默认本。
+       *
+       * ⚠️ 为什么**认**备份里的归属、但**不认**不存在的本：
+       *    备份-恢复是为了"换机后一切如旧"，分册结构也该跟着回来。
+       *    但若那个本在这台设备上不存在（比如只恢复了日记没建本），
+       *    指向一个不存在的本不会丢日记 —— 读取侧 `normalizeJournalRef`
+       *    只对"空串"兜底，指向不存在的本就永远看不见了。
+       *    所以这里保守处理：只保留空串或"确实存在的本"，其余归默认本。
+       */
+      journal: ''
     };
     const kept: BackupItem = {
       date: it.date,
@@ -322,7 +333,9 @@ export function planImport(existing: NoteMeta[], items: BackupItem[], now: numbe
         imgRef: sealed ? '' : firstImgRef(it.blocks),
         favorite: it.meta.favorite,
         tags: sealed ? [] : sanitizeTags(it.meta.tags),
-        unlockAt: savedUnlockAt
+        unlockAt: savedUnlockAt,
+        // 归属由 `NoteStore.importAll` 统一改写（导入一律落到当前本），规划阶段给空串
+        journal: ''
       }
     });
   }
