@@ -4,6 +4,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import huks from '@ohos.security.huks';
 
 import { NONCE_LEN, TAG_LEN } from '../data/VaultFrame';
+import { KDF_ALG, KDF_ALG_NAME, KDF_KEY_SIZE, PBKDF2_ITERATIONS } from './KdfParams';
 
 /**
  * 主密钥保管（决策 4：真·生物解锁）
@@ -21,18 +22,21 @@ import { NONCE_LEN, TAG_LEN } from '../data/VaultFrame';
  */
 const DOMAIN: number = 0xD002;
 const TAG: string = 'RockJournal';
-const PBKDF2_ITERATIONS: number = 100000;
-const KEY_SIZE: number = 32; // AES-256
 const BIO_KEY_ALIAS: string = 'rockjournal_bio_unlock';
 const PWD_FILE: string = 'vault_pwd.key';
 const BIO_FILE: string = 'vault_bio.key';
 
+/**
+ * ⚠️ PBKDF2 的**安全参数唯一真源**在 `security/KdfParams.ets`（纯逻辑、有单测守门）。
+ * 这里只引用、不再各写一份 —— 参数漂移会让老用户再也打不开自己的日记。
+ */
+
 /** 首次建库：生成随机主密钥，写入两份备份，返回主密钥字节（失败返 null） */
 export async function setupVault(password: string, salt: Uint8Array, filesDir: string): Promise<Uint8Array | null> {
   try {
-    const master: Uint8Array = randomBytes(KEY_SIZE);
+    const master: Uint8Array = randomBytes(KDF_KEY_SIZE);
     // ① 密码备份（必做）
-    const kek: cryptoFramework.SymKey = deriveKek(password, salt);
+    const kek: cryptoFramework.SymKey = await deriveKek(password, salt);
     const iv: Uint8Array = randomBytes(NONCE_LEN);
     const enc: Uint8Array = aesGcmEncrypt(kek, iv, master);
     const pwdBlob: Uint8Array = new Uint8Array(iv.length + enc.length);
@@ -69,7 +73,7 @@ export async function recoverByPassword(password: string, salt: Uint8Array, file
     const blob: Uint8Array = readFile(path);
     const iv: Uint8Array = blob.subarray(0, NONCE_LEN);
     const enc: Uint8Array = blob.subarray(NONCE_LEN);
-    const kek: cryptoFramework.SymKey = deriveKek(password, salt);
+    const kek: cryptoFramework.SymKey = await deriveKek(password, salt);
     return aesGcmDecrypt(kek, iv, enc);
   } catch (e) {
     hilog.error(DOMAIN, TAG, 'recoverByPassword failed: %{public}s', JSON.stringify(e));
@@ -111,17 +115,18 @@ export async function recoverByBiometric(filesDir: string): Promise<Uint8Array |
  *
  * @returns 主密钥字节；失败返 null（交给上层当"密码错"处理）
  */
-export function recoverLegacy(password: string, salt: Uint8Array, filesDir: string): Uint8Array | null {
+export async function recoverLegacy(password: string, salt: Uint8Array, filesDir: string): Promise<Uint8Array | null> {
   try {
-    const kdf: cryptoFramework.Kdf = cryptoFramework.createKdf('PBKDF2|SHA256');
+    const kdf: cryptoFramework.Kdf = cryptoFramework.createKdf(KDF_ALG);
     const spec: cryptoFramework.PBKDF2Spec = {
-      algName: 'PBKDF2',
+      algName: KDF_ALG_NAME,
       password: password,
       salt: salt,
       iterations: PBKDF2_ITERATIONS,
-      keySize: KEY_SIZE
+      keySize: KDF_KEY_SIZE
     };
-    const secret: cryptoFramework.DataBlob = kdf.generateSecretSync(spec);
+    // 异步版（与 deriveKek 同理：同步版会堵死 UI 主线程，见 deriveKek 注释）
+    const secret: cryptoFramework.DataBlob = await kdf.generateSecret(spec);
     const master: Uint8Array = secret.data;
     // 补写 vault_pwd.key（写失败不影响本次解锁 —— 下次再补）
     try {
@@ -226,17 +231,40 @@ async function hukUnseal(iv: Uint8Array, ct: Uint8Array): Promise<Uint8Array> {
   }
 }
 
-/** PBKDF2(密码, salt) → AES-256 KEK（与 VaultService 同源参数） */
-function deriveKek(password: string, salt: Uint8Array): cryptoFramework.SymKey {
-  const kdf: cryptoFramework.Kdf = cryptoFramework.createKdf('PBKDF2|SHA256');
+/**
+ * PBKDF2(密码, salt) → AES-256 KEK（与 VaultService 同源参数）
+ *
+ * ⚠️ **必须用异步版 generateSecret，不能用 generateSecretSync**（2026-10-29）：
+ *   PBKDF2 10 万轮 ≈ 20 万次 SHA-256 压缩。同步版 `generateSecretSync` 跑在
+ *   **调用线程**上，而调用链是「解锁按钮 onClick → recoverByPassword → deriveKek」
+ *   ⇒ 整段 KDF 就在 UI 主线程上一口气跑完，中间没有一帧可以交还给渲染管线。
+ *   AGC 上架自检「应用内点击操作完成快」测的正是「手指离手 → 页面转场 lane 结束」
+ *   的墙钟时间 —— 主线程被占住，转场就画不出来，lane 结束被整段 KDF 推后。
+ *   SDK 官方注释也明写：同步版「may take a long time and block the main thread …
+ *   advised to invoke synchronous API within a child thread to avoid blocking it」。
+ *
+ *   **派生结果一致性（安全关键，已核实）**：
+ *   官方 PBKDF2 指南把 `generateSecret(callback)` / `generateSecret(): Promise` /
+ *   `generateSecretSync()` 三种形式并列列出，**共用同一个 PBKDF2Spec、同一套
+ *   算法（'PBKDF2|SHA256'）**，异步版只是把执行放到系统线程池，**不是另一种算法**。
+ *   ⇒ 老库（vault_pwd.key / legacy 派生出来的主密钥）完全不受影响，
+ *      只是执行方式从「堵死主线程」变成「交还主线程、UI 照常出帧」。
+ *
+ * ⚠️ 迭代次数 100_000 是**安全参数，不要为了快而调低**（VaultService 头注有论证）：
+ *   这次动的是「在哪个线程跑」，不是「算多少次」。
+ */
+async function deriveKek(password: string, salt: Uint8Array): Promise<cryptoFramework.SymKey> {
+  const kdf: cryptoFramework.Kdf = cryptoFramework.createKdf(KDF_ALG);
   const spec: cryptoFramework.PBKDF2Spec = {
-    algName: 'PBKDF2',
+    algName: KDF_ALG_NAME,
     password: password,
     salt: salt,
     iterations: PBKDF2_ITERATIONS,
-    keySize: KEY_SIZE
+    keySize: KDF_KEY_SIZE
   };
-  const secret: cryptoFramework.DataBlob = kdf.generateSecretSync(spec);
+  const t0: number = Date.now();
+  const secret: cryptoFramework.DataBlob = await kdf.generateSecret(spec);
+  hilog.info(DOMAIN, TAG, 'pbkdf2 derive done: %{public}d ms', Date.now() - t0);
   const gen: cryptoFramework.SymKeyGenerator = cryptoFramework.createSymKeyGenerator('AES256');
   return gen.convertKeySync(secret);
 }

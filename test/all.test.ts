@@ -1,4 +1,5 @@
 import './smoke.test.ts';
+import './kdfparams.test.ts';
 import './blocks.test.ts';
 import './vaultframe.test.ts';
 import './notemeta.test.ts';

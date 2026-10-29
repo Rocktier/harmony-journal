@@ -5,6 +5,6 @@
 export const APP_NAME_CN: string = 'Rock私记';
 export const APP_BUNDLE_NAME: string = 'com.rocktier.rockjournal';
 /** 语义化版本，与 AppScope/app.json5 的 versionName 保持一致（改时两处一起改） */
-export const APP_VERSION: string = '1.0.5';
+export const APP_VERSION: string = '1.0.6';
 /** 与 app.json5 的 versionCode 保持一致 */
-export const APP_VERSION_CODE: number = 1000006;
+export const APP_VERSION_CODE: number = 1000007;

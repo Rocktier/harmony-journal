@@ -34,6 +34,18 @@ struct Unlock {
   @State private error: string = '';
   @State private firstRun: boolean = isFirstRun();
   @State private bioAvailable: boolean = false;
+  /**
+   * 解锁进行中（2026-10-29，AGC「应用内点击操作完成快」整改）。
+   *
+   * 为什么要这个标志：PBKDF2 10 万轮即使改成异步版，**派生本身仍要花掉真实时间**
+   * （实测一次几百毫秒到数秒，取决于机型）。若点击后界面毫无变化，用户（和 AGC 的
+   * 自动化检测）看到的就是「按下去没反应」—— 转场 lane 的结束时间被整段等待推后，
+   * 检测值直接超标。
+   *
+   * 所以：**点击的同一个同步块里就把按钮换成「解锁中…」并禁用**，
+   * 让「界面变化」立刻发生，剩余的等待发生在加载态里（用户看得见进度，不觉得卡）。
+   */
+  @State private busy: boolean = false;
   /** 隐私政策是否已同意（未同意 ⇒ 先过隐私门，见 build） */
   @State private agreed: boolean = false;
   private privacy: PrivacyPrefs = new PrivacyPrefs();
@@ -51,17 +63,24 @@ struct Unlock {
   }
 
   private async doBio(): Promise<void> {
+    // 已经在解锁中就直接返回：连点两下会跑两遍 HUKS 会话
+    if (this.busy) {
+      return;
+    }
+    this.busy = true;
     const ok: boolean = await unlockWithBiometric();
     if (ok) {
-      router.replaceUrl({ url: 'pages/Index' }).catch((e: Error) => {
-        hilog.error(DOMAIN, TAG, 'replaceUrl failed: %{public}s', JSON.stringify(e));
-      });
-    } else {
-      this.error = '生物解锁失败，请用主密码';
+      this.goIndex();
+      return;
     }
+    this.busy = false;
+    this.error = '生物解锁失败，请用主密码';
   }
 
   private async doUnlock(): Promise<void> {
+    if (this.busy) {
+      return;
+    }
     if (this.firstRun) {
       if (this.password.length < 6) {
         this.error = '主密码至少 6 位';
@@ -71,8 +90,12 @@ struct Unlock {
         this.error = '两次输入不一致';
         return;
       }
+      // ⭐ 进加载态的时机：**校验通过之后**才置 busy。
+      //   校验失败要在同一个响应里把错误说清楚，不能先转菊花再报错（那样像卡住）。
+      this.busy = true;
       const ok: boolean = await setupVault(this.password);
       if (!ok) {
+        this.busy = false;
         this.error = '建库失败，请重试';
         return;
       }
@@ -83,10 +106,12 @@ struct Unlock {
       this.error = '请输入主密码';
       return;
     }
+    this.busy = true;
     const ok: boolean = await unlockWith(this.password);
     if (ok) {
       this.goIndex();
     } else {
+      this.busy = false;
       this.error = '密码不正确，或数据已损坏/不兼容';
     }
   }
@@ -215,6 +240,7 @@ struct Unlock {
           .width('80%')
           .height(46)
           .margin({ top: RJ_SP_MD, bottom: RJ_SP_SM })
+          .enabled(!this.busy)
           .onClick(() => {
             this.doBio();
           })
@@ -226,7 +252,8 @@ struct Unlock {
       // ⚠️ 原来无脑用 `rj_text` 做底：深色下是白底黑字，比主行动按钮还抢眼，主次打架。
       // ⚠️ 主行动分支**不用 EMPHASIZED**：系统强调样式会覆盖 backgroundColor（墨底被冲白、字看不见，
       //   2026-10-14 实测），用 NORMAL + 自绘实心替代。
-      Button(this.firstRun ? '设置并进入' : '用主密码解锁', { type: ButtonType.Normal, stateEffect: true })
+        Button(this.busy ? this.busyLabel() : (this.firstRun ? '设置并进入' : '用主密码解锁'),
+          { type: ButtonType.Normal, stateEffect: true })
         .buttonStyle(this.pwdPrimary() ? ButtonStyleMode.NORMAL : ButtonStyleMode.TEXTUAL)
         .fontSize(RJ_FS_HEADING)
         .fontWeight(this.pwdPrimary() ? FontWeight.Medium : FontWeight.Normal)
@@ -235,6 +262,8 @@ struct Unlock {
         .width('80%')
         .height(46)
         .margin({ top: RJ_SP_MD })
+        // 解锁中：文案换掉 + 禁用，既是给用户的进度反馈，也是防连点
+        .enabled(!this.busy)
         .onClick(() => {
           this.doUnlock();
         })
@@ -386,5 +415,14 @@ struct Unlock {
    */
   private pwdPrimary(): boolean {
     return this.firstRun || !this.bioAvailable;
+  }
+
+  /**
+   * 解锁中的按钮文案（2026-10-29，AGC 点击时延整改）。
+   * 建库比解锁更久（还要生成两份密钥备份），所以两种情况文案不同 ——
+   * 用户知道自己在等什么，比一个空转的菊花好。
+   */
+  private busyLabel(): string {
+    return this.firstRun ? '正在建立保险库…' : '正在解锁…';
   }
 }
