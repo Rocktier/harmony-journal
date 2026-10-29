@@ -29,7 +29,17 @@ Push-Location $root
 # stderr 输出当终止错误（NativeCommandError）误杀整场构建（2026-10-21 实测）。
 # 这里临时降档到 Continue：警告照常打印，只信退出码。
 $ErrorActionPreference = "Continue"
-node "$ide\tools\hvigor\bin\hvigorw.js" assembleApp --mode project -p product=release -p buildMode=release --no-daemon
+# ⚠️ 必须经 cmd /c 包一层（2026-10-30 在 Reader 仓踩到，同写法同步修）：
+#   本脚本开头是 $ErrorActionPreference = "Stop"，而 hvigor 会把 **WARN 也写到 stderr**。
+#   直接 `node ... 2>&1` 时原生命令的 stderr 被转成 ErrorRecord，Stop 下**当场中断**
+#   —— 表现为"6 秒就 Failed :entry:default@CompileArkTS"，看着像编译失败，
+#   其实构建根本没跑完就被引爆，产物目录还是旧的（拿旧包去传 = 自找 993）。
+#   经 cmd 重定向后只看到普通字符串 ⇒ 只看退出码判成败。
+cmd /c "node ""$ide\tools\hvigor\bin\hvigorw.js"" assembleApp --mode project -p product=release -p buildMode=release --no-daemon 2>&1"
+if ($LASTEXITCODE -ne 0) {
+  Pop-Location
+  throw "hvigor 构建失败（退出码 $LASTEXITCODE）—— 不要上传任何产物"
+}
 $exitCode = $LASTEXITCODE
 Pop-Location
 if ($exitCode -ne 0) { throw "hvigor assembleApp 失败，退出码 $exitCode" }
