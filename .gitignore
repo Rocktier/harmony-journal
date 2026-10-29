@@ -47,4 +47,7 @@ Thumbs.db
 /findings.md
 /progress.md
 /docs/evaluation*.md
-.workbuddy/
+# 记忆台账要进版本库（与 RockReader 仓保持一致，便于随仓携带）
+# 只放行 memory/，将来 .workbuddy 下的缓存/会话状态仍自动排除
+.workbuddy/*
+!.workbuddy/memory/
